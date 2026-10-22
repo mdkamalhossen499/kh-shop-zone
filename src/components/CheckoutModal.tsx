@@ -46,7 +46,8 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
 
   // Update upazilas when district changes
   const selectedDistrictInfo = BANGLADESH_DISTRICTS.find(d => d.name === district) || BANGLADESH_DISTRICTS[0];
-  const availableUpazilas = selectedDistrictInfo.upazilas;
+  const availableUpazilas = selectedDistrictInfo ? selectedDistrictInfo.upazilas : [];
+  const divisions = Array.from(new Set(BANGLADESH_DISTRICTS.map(d => d.division)));
 
   useEffect(() => {
     if (selectedDistrictInfo) {
@@ -54,6 +55,12 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
       setDeliveryZone(selectedDistrictInfo.zone);
     }
   }, [district]);
+
+  useEffect(() => {
+    if (isOpen && selectedDistrictInfo) {
+      setDeliveryZone(selectedDistrictInfo.zone);
+    }
+  }, [isOpen]);
 
   // Reset payment validation errors when payment method switches
   useEffect(() => {
@@ -311,30 +318,50 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
               </div>
 
               <div>
-                <label className="block text-neutral-700 font-medium mb-1">
-                  District <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-neutral-700 font-medium">
+                    District ({BANGLADESH_DISTRICTS.length}) <span className="text-red-500">*</span>
+                  </label>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                    selectedDistrictInfo.zone === 'inside_dhaka'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-blue-100 text-blue-800 border border-blue-200'
+                  }`}>
+                    {selectedDistrictInfo.zone === 'inside_dhaka'
+                      ? `Inside Dhaka (৳${settings?.delivery.insideDhakaFee ?? 60})`
+                      : `Outside Dhaka (৳${settings?.delivery.outsideDhakaFee ?? 120})`}
+                  </span>
+                </div>
                 <select
                   value={district}
                   onChange={e => setDistrict(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white"
+                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white text-xs font-medium"
                 >
-                  {BANGLADESH_DISTRICTS.map(d => (
-                    <option key={d.name} value={d.name}>
-                      {d.name} ({d.bn}) {d.zone === 'inside_dhaka' ? '— Inside Dhaka' : '— Outside Dhaka'}
-                    </option>
+                  {divisions.map(div => (
+                    <optgroup key={div} label={`${div} Division`}>
+                      {BANGLADESH_DISTRICTS.filter(d => d.division === div).map(d => (
+                        <option key={d.name} value={d.name}>
+                          {d.name} ({d.bn}) {d.zone === 'inside_dhaka' ? '— Inside Dhaka' : '— Outside Dhaka'}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-neutral-700 font-medium mb-1">
-                  Upazila / Area <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-neutral-700 font-medium">
+                    Upazila / Area <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-neutral-400 font-normal">
+                    {availableUpazilas.length} areas available
+                  </span>
+                </div>
                 <select
                   value={upazila}
                   onChange={e => setUpazila(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white"
+                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white text-xs font-medium"
                 >
                   {availableUpazilas.map(u => (
                     <option key={u} value={u}>{u}</option>

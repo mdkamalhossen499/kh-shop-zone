@@ -503,7 +503,15 @@ app.post('/api/admin/restore', requireAdminAuth, (req: Request, res: Response) =
 // ==========================================
 // SPA / STATIC SERVING & VITE DEV SERVER
 // ==========================================
-async function startServer() {
+  const publicDir = path.resolve(process.cwd(), 'public');
+  const srcAssetsDir = path.resolve(process.cwd(), 'src/assets');
+
+  // Explicit static file serving for mobile browsers and CDNs
+  app.use(express.static(publicDir, { maxAge: '1d' }));
+  app.use('/src/assets', express.static(srcAssetsDir, { maxAge: '1d' }));
+  app.use('/assets', express.static(srcAssetsDir, { maxAge: '1d' }));
+  app.use('/images', express.static(path.join(srcAssetsDir, 'images'), { maxAge: '1d' }));
+
   if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },

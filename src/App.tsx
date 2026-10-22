@@ -190,7 +190,11 @@ function StoreApp() {
 
       {isAdminOpen && (
         <AdminPanel
-          onClose={() => setIsAdminOpen(false)}
+          onClose={() => {
+            setIsAdminOpen(false);
+            setCurrentView('home');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
       )}
     </div>

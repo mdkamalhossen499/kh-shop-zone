@@ -16,17 +16,21 @@ interface AdminContextType {
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
 export function AdminProvider({ children }: { children: ReactNode }) {
-  const [adminToken, setAdminToken] = useState<string | null>(() => {
-    return localStorage.getItem('kh_admin_token') || null;
-  });
-  const [adminUser, setAdminUser] = useState<Omit<AdminUser, 'passwordHash' | 'salt'> | null>(() => {
+  // Strict ephemeral in-memory session (no persistent login across tab closes or modal exits)
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [adminUser, setAdminUser] = useState<Omit<AdminUser, 'passwordHash' | 'salt'> | null>(null);
+
+  // Clear any legacy persistent tokens on startup
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('kh_admin_user');
-      return saved ? JSON.parse(saved) : null;
+      localStorage.removeItem('kh_admin_token');
+      localStorage.removeItem('kh_admin_user');
+      sessionStorage.removeItem('kh_admin_token');
+      sessionStorage.removeItem('kh_admin_user');
     } catch {
-      return null;
+      // ignore
     }
-  });
+  }, []);
 
   const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers || {});
@@ -49,7 +53,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         })
         .then(user => {
           setAdminUser(user);
-          localStorage.setItem('kh_admin_user', JSON.stringify(user));
         })
         .catch(() => {
           logout();
@@ -73,8 +76,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         if (data.success && data.token) {
           setAdminToken(data.token);
           setAdminUser(data.user);
-          localStorage.setItem('kh_admin_token', data.token);
-          localStorage.setItem('kh_admin_user', JSON.stringify(data.user));
           return { success: true };
         }
       } else if (res.status === 401 && contentType.includes('application/json')) {
@@ -99,9 +100,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
       setAdminToken(fallbackToken);
       setAdminUser(safeUser);
-      localStorage.setItem('kh_admin_token', fallbackToken);
-      localStorage.setItem('kh_admin_user', JSON.stringify(safeUser));
-      LocalStoreManager.logAudit(safeUser.email, 'ADMIN_LOGIN', 'Logged into Admin Console via secure local storage session');
+      LocalStoreManager.logAudit(safeUser.email, 'ADMIN_LOGIN', 'Logged into Admin Console via secure active session');
       return { success: true };
     }
 
@@ -114,8 +113,14 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setAdminToken(null);
     setAdminUser(null);
-    localStorage.removeItem('kh_admin_token');
-    localStorage.removeItem('kh_admin_user');
+    try {
+      localStorage.removeItem('kh_admin_token');
+      localStorage.removeItem('kh_admin_user');
+      sessionStorage.removeItem('kh_admin_token');
+      sessionStorage.removeItem('kh_admin_user');
+    } catch {
+      // ignore
+    }
   };
 
   const changeCredentials = async (
@@ -146,7 +151,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           if (cleanNewPass) LocalStoreManager.setAdminPassword(cleanNewPass);
           if (data.user) {
             setAdminUser(data.user);
-            localStorage.setItem('kh_admin_user', JSON.stringify(data.user));
           }
           return { success: true };
         }
@@ -174,7 +178,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       };
 
       setAdminUser(updatedUser);
-      localStorage.setItem('kh_admin_user', JSON.stringify(updatedUser));
       LocalStoreManager.logAudit(updatedUser.email, 'UPDATE_CREDENTIALS', 'Updated admin security credentials');
       return { success: true };
     }

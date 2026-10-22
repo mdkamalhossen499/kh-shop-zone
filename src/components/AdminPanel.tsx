@@ -144,6 +144,30 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     }
   };
 
+  // Strict auto-logout security: whenever AdminPanel unmounts or exits, terminate active session
+  useEffect(() => {
+    return () => {
+      logout();
+    };
+  }, []);
+
+  // Handler for Close (✕) button: immediately logs out and closes modal/returns to homepage
+  const handleCloseAndLogout = () => {
+    logout();
+    setLoginEmail('');
+    setLoginPass('');
+    setLoginError('');
+    onClose();
+  };
+
+  // Handler for explicit Logout button in Admin Top Navigation
+  const handleExplicitLogout = () => {
+    logout();
+    setLoginEmail('');
+    setLoginPass('');
+    setLoginError('');
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       loadAdminData();
@@ -635,8 +659,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
         <div className="relative bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-neutral-200">
           <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 text-neutral-400 hover:text-neutral-900 rounded-lg"
+            onClick={handleCloseAndLogout}
+            className="absolute top-4 right-4 p-1.5 text-neutral-400 hover:text-neutral-900 rounded-lg transition-colors"
+            title="Close & Return to Homepage"
           >
             <X className="w-5 h-5" />
           </button>
@@ -739,17 +764,18 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
           </button>
 
           <button
-            onClick={logout}
+            onClick={handleExplicitLogout}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-red-950 text-neutral-200 hover:text-red-300 rounded-lg transition-colors"
+            title="Log out of Admin Console"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Logout</span>
           </button>
 
           <button
-            onClick={onClose}
+            onClick={handleCloseAndLogout}
             className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
-            title="Exit Admin View"
+            title="Exit Admin View & Return to Homepage"
           >
             <X className="w-5 h-5" />
           </button>

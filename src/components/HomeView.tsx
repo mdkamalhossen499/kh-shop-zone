@@ -41,6 +41,44 @@ export function HomeView({ onQuickView, onSelectCategory, onNavigateToShop }: Ho
     ? featuredProducts
     : products.filter(p => p.categoryId === activeTab);
 
+  // Dynamic Hero Banner from Settings
+  const heroBanner = settings?.heroBanner;
+  const heroBadge = heroBanner?.badgeText || '100% Authentic Luxury & Daily Lifestyle';
+  const heroTitle = heroBanner?.title || 'Elevate Your Lifestyle with KH SHOP ZONE';
+  const heroSubtitle = heroBanner?.subtitle || 'Authentic Arabian Oud, Designer Festive Silk Panjabis & Sarees, Clinical Skincare, and Modern Gadgets — delivered directly to your doorstep with Cash on Delivery nationwide.';
+  const heroImage = heroBanner?.imageUrl || '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg';
+
+  const primaryBtnText = heroBanner?.primaryBtnText || (language === 'bn' ? 'সব পণ্য দেখুন' : 'Explore Collections');
+  const handlePrimaryHeroAction = () => {
+    const link = heroBanner?.primaryBtnLink || 'shop';
+    if (!link || link === 'shop') {
+      onNavigateToShop();
+    } else if (categories.some(c => c.id === link)) {
+      onSelectCategory(link);
+    } else if (link.startsWith('http://') || link.startsWith('https://')) {
+      window.location.href = link;
+    } else {
+      onNavigateToShop();
+    }
+  };
+
+  const secondaryBtnText = heroBanner?.secondaryBtnText !== undefined
+    ? heroBanner.secondaryBtnText
+    : (language === 'bn' ? 'পারফিউম কালেকশন' : 'Arabian Perfumes');
+
+  const handleSecondaryHeroAction = () => {
+    const link = heroBanner?.secondaryBtnLink || 'cat_perfumes';
+    if (link === 'shop') {
+      onNavigateToShop();
+    } else if (categories.some(c => c.id === link)) {
+      onSelectCategory(link);
+    } else if (link.startsWith('http://') || link.startsWith('https://')) {
+      window.location.href = link;
+    } else {
+      onSelectCategory('cat_perfumes');
+    }
+  };
+
   return (
     <div className="space-y-12 sm:space-y-16 pb-16">
       {/* 1. STOREFRONT HERO CAMPAIGN */}
@@ -48,9 +86,9 @@ export function HomeView({ onQuickView, onSelectCategory, onNavigateToShop }: Ho
         <div className="relative rounded-3xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-xl min-h-[440px] md:min-h-[500px] flex items-center">
           {/* Background Photography with Scrim */}
           <img
-            src="/src/assets/images/hero_kh_shop_zone_1792643165977.jpg"
-            alt="KH SHOP ZONE Lifestyle Collection"
-            className="absolute inset-0 w-full h-full object-cover opacity-45 sm:opacity-50 object-center"
+            src={heroImage}
+            alt={heroTitle}
+            className="absolute inset-0 w-full h-full object-cover opacity-45 sm:opacity-50 object-center transition-all duration-500"
             fetchPriority="high"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/95 via-neutral-950/70 to-transparent" />
@@ -59,32 +97,34 @@ export function HomeView({ onQuickView, onSelectCategory, onNavigateToShop }: Ho
           <div className="relative z-10 max-w-2xl p-6 sm:p-12 md:p-16 text-white space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-amber-300 border border-white/10">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>100% Authentic Luxury & Daily Lifestyle</span>
+              <span>{heroBadge}</span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold font-display tracking-tight leading-[1.15] text-balance">
-              Elevate Your Lifestyle with KH SHOP ZONE
+              {heroTitle}
             </h1>
 
             <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed max-w-lg">
-              Authentic Arabian Oud, Designer Festive Silk Panjabis & Sarees, Clinical Skincare, and Modern Gadgets — delivered directly to your doorstep with Cash on Delivery nationwide.
+              {heroSubtitle}
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
-                onClick={onNavigateToShop}
+                onClick={handlePrimaryHeroAction}
                 className="px-6 py-3 bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg flex items-center gap-2 group"
               >
-                <span>{language === 'bn' ? 'সব পণ্য দেখুন' : 'Explore Collections'}</span>
+                <span>{primaryBtnText}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
 
-              <button
-                onClick={() => onSelectCategory('cat_perfumes')}
-                className="px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm rounded-xl backdrop-blur-md border border-white/20 transition-colors"
-              >
-                {language === 'bn' ? 'পারফিউম কালেকশন' : 'Arabian Perfumes'}
-              </button>
+              {secondaryBtnText && (
+                <button
+                  onClick={handleSecondaryHeroAction}
+                  className="px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs sm:text-sm rounded-xl backdrop-blur-md border border-white/20 transition-colors"
+                >
+                  {secondaryBtnText}
+                </button>
+              )}
             </div>
 
             {/* Quick Metrics Bar below CTA */}

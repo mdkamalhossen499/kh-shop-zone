@@ -123,6 +123,17 @@ export interface Review {
   createdAt: string;
 }
 
+export interface HeroBannerSettings {
+  title: string;
+  subtitle: string;
+  badgeText: string;
+  imageUrl: string;
+  primaryBtnText: string;
+  primaryBtnLink?: string;
+  secondaryBtnText: string;
+  secondaryBtnLink?: string;
+}
+
 export interface SiteSettings {
   siteName: string;
   tagline: string;
@@ -136,6 +147,7 @@ export interface SiteSettings {
   contactPhone: string;
   contactEmail: string;
   officeAddress: string;
+  heroBanner?: HeroBannerSettings;
   socialLinks: {
     facebook: string;
     instagram: string;

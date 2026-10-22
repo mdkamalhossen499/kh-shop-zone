@@ -42,6 +42,16 @@ const initialDatabase: DatabaseSchema = {
     contactPhone: '+880 1711-223344',
     contactEmail: 'support@khshopzone.com',
     officeAddress: 'House 42, Road 11, Block D, Banani, Dhaka-1213, Bangladesh',
+    heroBanner: {
+      badgeText: '100% Authentic Luxury & Daily Lifestyle',
+      title: 'Elevate Your Lifestyle with KH SHOP ZONE',
+      subtitle: 'Authentic Arabian Oud, Designer Festive Silk Panjabis & Sarees, Clinical Skincare, and Modern Gadgets — delivered directly to your doorstep with Cash on Delivery nationwide.',
+      imageUrl: '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg',
+      primaryBtnText: 'Explore Collections',
+      primaryBtnLink: 'shop',
+      secondaryBtnText: 'Arabian Perfumes',
+      secondaryBtnLink: 'cat_perfumes'
+    },
     socialLinks: {
       facebook: 'https://facebook.com/khshopzone',
       instagram: 'https://instagram.com/khshopzone',
@@ -605,7 +615,14 @@ export class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         return {
-          settings: { ...initialDatabase.settings, ...parsed.settings },
+          settings: {
+            ...initialDatabase.settings,
+            ...parsed.settings,
+            heroBanner: {
+              ...initialDatabase.settings.heroBanner!,
+              ...(parsed.settings?.heroBanner || {})
+            }
+          },
           admins: parsed.admins || initialDatabase.admins,
           categories: parsed.categories || initialDatabase.categories,
           products: parsed.products || initialDatabase.products,

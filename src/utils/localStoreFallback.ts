@@ -14,6 +14,16 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   contactPhone: '+880 1711-223344',
   contactEmail: 'support@khshopzone.com',
   officeAddress: 'House 42, Road 11, Block D, Banani, Dhaka-1213, Bangladesh',
+  heroBanner: {
+    badgeText: '100% Authentic Luxury & Daily Lifestyle',
+    title: 'Elevate Your Lifestyle with KH SHOP ZONE',
+    subtitle: 'Authentic Arabian Oud, Designer Festive Silk Panjabis & Sarees, Clinical Skincare, and Modern Gadgets — delivered directly to your doorstep with Cash on Delivery nationwide.',
+    imageUrl: '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg',
+    primaryBtnText: 'Explore Collections',
+    primaryBtnLink: 'shop',
+    secondaryBtnText: 'Arabian Perfumes',
+    secondaryBtnLink: 'cat_perfumes'
+  },
   socialLinks: {
     facebook: 'https://facebook.com/khshopzone',
     instagram: 'https://instagram.com/khshopzone',
@@ -565,7 +575,26 @@ export class LocalStoreManager {
   public static getSettings(): SiteSettings {
     try {
       const data = localStorage.getItem('kh_local_settings');
-      return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
+      if (data) {
+        const parsed = JSON.parse(data);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          heroBanner: {
+            ...DEFAULT_SETTINGS.heroBanner!,
+            ...(parsed.heroBanner || {})
+          },
+          delivery: {
+            ...DEFAULT_SETTINGS.delivery,
+            ...(parsed.delivery || {})
+          },
+          paymentMethods: {
+            ...DEFAULT_SETTINGS.paymentMethods,
+            ...(parsed.paymentMethods || {})
+          }
+        };
+      }
+      return DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
     }

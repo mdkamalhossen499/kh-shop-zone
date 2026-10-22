@@ -3,11 +3,11 @@ import {
   ShieldCheck, LayoutDashboard, Package, ShoppingCart, Tag, Settings,
   FileText, Database, LogOut, Key, Search, Plus, Trash2, Edit3, Check,
   AlertTriangle, Eye, EyeOff, Printer, RefreshCw, X, ArrowUpRight, DollarSign,
-  TrendingUp, Users, Truck, Clock, Lock, Upload, Image as ImageIcon
+  TrendingUp, Users, Truck, Clock, Lock, Upload, Image as ImageIcon, Sparkles
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { useStore } from '../context/StoreContext';
-import { Product, Order, Category, Coupon, AuditLog, SiteSettings } from '../types/ecommerce';
+import { Product, Order, Category, Coupon, AuditLog, SiteSettings, HeroBannerSettings } from '../types/ecommerce';
 import { LocalStoreManager } from '../utils/localStoreFallback';
 
 interface AdminPanelProps {
@@ -486,6 +486,50 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   };
 
   // --- IMAGE UPLOAD HANDLERS ---
+  const DEFAULT_HERO_STATE: HeroBannerSettings = {
+    badgeText: '100% Authentic Luxury & Daily Lifestyle',
+    title: 'Elevate Your Lifestyle with KH SHOP ZONE',
+    subtitle: 'Authentic Arabian Oud, Designer Festive Silk Panjabis & Sarees, Clinical Skincare, and Modern Gadgets — delivered directly to your doorstep with Cash on Delivery nationwide.',
+    imageUrl: '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg',
+    primaryBtnText: 'Explore Collections',
+    primaryBtnLink: 'shop',
+    secondaryBtnText: 'Arabian Perfumes',
+    secondaryBtnLink: 'cat_perfumes'
+  };
+
+  const getEffectiveHero = (): HeroBannerSettings => {
+    return {
+      ...DEFAULT_HERO_STATE,
+      ...(settingsForm?.heroBanner || {})
+    };
+  };
+
+  const updateHeroField = (field: keyof HeroBannerSettings, value: string) => {
+    if (!settingsForm) return;
+    const current = getEffectiveHero();
+    setSettingsForm({
+      ...settingsForm,
+      heroBanner: {
+        ...current,
+        [field]: value
+      }
+    });
+  };
+
+  const handleHeroImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !settingsForm) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        updateHeroField('imageUrl', base64);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !settingsForm) return;
@@ -539,19 +583,24 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     e.preventDefault();
     if (!settingsForm) return;
 
+    const settingsToSave: SiteSettings = {
+      ...settingsForm,
+      heroBanner: getEffectiveHero()
+    };
+
     try {
       await fetchWithAuth('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settingsForm)
+        body: JSON.stringify(settingsToSave)
       });
     } catch {
       // fallback
     }
 
-    LocalStoreManager.saveSettings(settingsForm);
-    LocalStoreManager.logAudit(adminUser?.email || 'admin@khshopzone.com', 'UPDATE_SETTINGS', 'Updated store branding & delivery fees');
-    alert('Site settings updated successfully!');
+    LocalStoreManager.saveSettings(settingsToSave);
+    LocalStoreManager.logAudit(adminUser?.email || 'admin@khshopzone.com', 'UPDATE_SETTINGS', 'Updated store branding, hero banner & delivery fees');
+    alert('Site settings and Hero Banner updated successfully!');
     refreshSettings();
   };
 
@@ -2021,10 +2070,270 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 </div>
               </div>
 
+              {/* SECTION 2: HOMEPAGE HERO BANNER CUSTOMIZATION */}
+              {(() => {
+                const effectiveHero = getEffectiveHero();
+                return (
+                  <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-neutral-900 text-amber-400 flex items-center justify-center shrink-0 shadow-xs">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-neutral-900">
+                            2. Homepage Hero Banner Customization
+                          </h3>
+                          <p className="text-[11px] text-neutral-500">
+                            Customize the hero billboard on the storefront. Changes sync dynamically across sessions.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-semibold bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto border border-amber-200">
+                        Live Storefront Banner
+                      </span>
+                    </div>
+
+                    {/* Live Visual Preview Card */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-neutral-700">
+                        Live Visual Preview
+                      </label>
+                      <div className="relative rounded-2xl overflow-hidden bg-neutral-950 border border-neutral-800 shadow-md min-h-[220px] sm:min-h-[240px] flex items-center p-6 sm:p-8 text-white">
+                        <img
+                          src={effectiveHero.imageUrl || '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg'}
+                          alt="Hero Preview"
+                          className="absolute inset-0 w-full h-full object-cover opacity-45 object-center transition-all duration-300"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/95 via-neutral-950/70 to-transparent" />
+                        <div className="relative z-10 max-w-lg space-y-2.5">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white/10 backdrop-blur-md rounded-full text-[10px] font-semibold text-amber-300 border border-white/10">
+                            <Sparkles className="w-3 h-3 text-amber-400" />
+                            <span>{effectiveHero.badgeText || '100% Authentic Luxury & Daily Lifestyle'}</span>
+                          </div>
+                          <h4 className="text-lg sm:text-2xl font-bold font-display tracking-tight text-white leading-tight">
+                            {effectiveHero.title || 'Elevate Your Lifestyle with KH SHOP ZONE'}
+                          </h4>
+                          <p className="text-[11px] sm:text-xs text-neutral-300 line-clamp-2 leading-relaxed">
+                            {effectiveHero.subtitle || 'Hero description subtitle text...'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <div className="px-3.5 py-1.5 bg-amber-400 text-neutral-950 font-bold text-[11px] rounded-lg shadow-sm flex items-center gap-1.5">
+                              <span>{effectiveHero.primaryBtnText || 'Explore Collections'}</span>
+                              <ArrowUpRight className="w-3 h-3" />
+                            </div>
+                            {effectiveHero.secondaryBtnText && (
+                              <div className="px-3 py-1.5 bg-white/10 text-white font-semibold text-[11px] rounded-lg border border-white/20 backdrop-blur-md">
+                                {effectiveHero.secondaryBtnText}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Banner Image Source: Upload, URL, and Quick Presets */}
+                    <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <label className="block text-neutral-800 font-bold text-xs">
+                            Hero Background Photography
+                          </label>
+                          <p className="text-[11px] text-neutral-500">
+                            Upload a high-resolution banner photo or paste any direct image URL.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor="hero-banner-upload"
+                            className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-semibold text-xs transition-colors shadow-xs"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Upload Hero Image</span>
+                          </label>
+                          <input
+                            id="hero-banner-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleHeroImageUpload}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateHeroField('imageUrl', '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg')}
+                            className="px-2.5 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-700 rounded-lg text-xs font-medium transition-colors"
+                            title="Reset to default banner photography"
+                          >
+                            Reset Default
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Or paste direct image URL (https://... or /src/assets/... or data:image/...)"
+                          value={effectiveHero.imageUrl || ''}
+                          onChange={e => updateHeroField('imageUrl', e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-xs font-mono"
+                        />
+                      </div>
+
+                      {/* Quick Image Presets */}
+                      <div className="pt-1">
+                        <span className="block text-[11px] font-semibold text-neutral-600 mb-1.5">
+                          Quick Presets from Catalog:
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { label: 'Default Lifestyle', url: '/src/assets/images/hero_kh_shop_zone_1792643165977.jpg' },
+                            { label: 'Arabian Oud & Amber', url: '/src/assets/images/product_perfume_oud_1792643166621.jpg' },
+                            { label: "Festive Silk Panjabi", url: '/src/assets/images/product_mens_panjabi_1792643166484.jpg' },
+                            { label: 'Handcrafted Zari Saree', url: '/src/assets/images/product_womens_saree_1792643168391.jpg' },
+                            { label: 'Clinical Skincare Serum', url: '/src/assets/images/product_skincare_serum_1792643166908.jpg' }
+                          ].map(preset => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => updateHeroField('imageUrl', preset.url)}
+                              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors border ${
+                                effectiveHero.imageUrl === preset.url
+                                  ? 'bg-amber-400 text-neutral-950 border-amber-500 font-bold'
+                                  : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Copywriting Fields */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <label className="block text-neutral-800 font-semibold mb-1">
+                          Hero Badge Text
+                        </label>
+                        <input
+                          type="text"
+                          value={effectiveHero.badgeText || ''}
+                          onChange={e => updateHeroField('badgeText', e.target.value)}
+                          placeholder="e.g. 100% Authentic Luxury & Daily Lifestyle"
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
+                        />
+                        <span className="text-[10px] text-neutral-400 mt-1 block">
+                          Badge label appearing above the main title
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-neutral-800 font-semibold mb-1">
+                          Hero Title (Main Heading)
+                        </label>
+                        <input
+                          type="text"
+                          value={effectiveHero.title || ''}
+                          onChange={e => updateHeroField('title', e.target.value)}
+                          placeholder="e.g. Elevate Your Lifestyle with KH SHOP ZONE"
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-bold"
+                        />
+                        <span className="text-[10px] text-neutral-400 mt-1 block">
+                          Primary headline displayed in bold display typography
+                        </span>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-neutral-800 font-semibold mb-1">
+                          Hero Subtitle / Description Text
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={effectiveHero.subtitle || ''}
+                          onChange={e => updateHeroField('subtitle', e.target.value)}
+                          placeholder="Detailed promotional description or value propositions..."
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs leading-relaxed"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action Buttons Configuration */}
+                    <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 space-y-4">
+                      <h4 className="text-xs font-bold text-neutral-900 border-b border-neutral-200 pb-1.5">
+                        Call-To-Action (CTA) Buttons & Redirects
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                        {/* Primary Button */}
+                        <div className="p-3 bg-white rounded-lg border border-neutral-200 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-neutral-900 text-xs">Primary CTA Button</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-semibold">Gold Button</span>
+                          </div>
+                          <div>
+                            <label className="block text-neutral-600 font-medium mb-1 text-[11px]">Button Label</label>
+                            <input
+                              type="text"
+                              value={effectiveHero.primaryBtnText || ''}
+                              onChange={e => updateHeroField('primaryBtnText', e.target.value)}
+                              placeholder="e.g. Explore Collections"
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs font-semibold"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-neutral-600 font-medium mb-1 text-[11px]">Redirect Target</label>
+                            <select
+                              value={effectiveHero.primaryBtnLink || 'shop'}
+                              onChange={e => updateHeroField('primaryBtnLink', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs"
+                            >
+                              <option value="shop">All Products / Shop Collection</option>
+                              {globalCategories.map(cat => (
+                                <option key={cat.id} value={cat.id}>Category: {cat.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Secondary Button */}
+                        <div className="p-3 bg-white rounded-lg border border-neutral-200 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-neutral-900 text-xs">Secondary CTA Button</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded font-semibold">Glass Button</span>
+                          </div>
+                          <div>
+                            <label className="block text-neutral-600 font-medium mb-1 text-[11px]">Button Label (Leave blank to hide)</label>
+                            <input
+                              type="text"
+                              value={effectiveHero.secondaryBtnText || ''}
+                              onChange={e => updateHeroField('secondaryBtnText', e.target.value)}
+                              placeholder="e.g. Arabian Perfumes"
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-neutral-600 font-medium mb-1 text-[11px]">Redirect Target</label>
+                            <select
+                              value={effectiveHero.secondaryBtnLink || 'cat_perfumes'}
+                              onChange={e => updateHeroField('secondaryBtnLink', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-300 rounded text-xs"
+                            >
+                              <option value="shop">All Products / Shop Collection</option>
+                              {globalCategories.map(cat => (
+                                <option key={cat.id} value={cat.id}>Category: {cat.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Delivery Settings */}
               <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-4">
                 <h3 className="text-sm font-bold text-neutral-900 border-b border-neutral-200 pb-2">
-                  2. Nationwide Delivery Rates (BDT)
+                  3. Nationwide Delivery Rates (BDT)
                 </h3>
                 <div className="grid grid-cols-3 gap-4 text-xs">
                   <div>
@@ -2069,7 +2378,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               {/* Payment Methods Config */}
               <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-4">
                 <h3 className="text-sm font-bold text-neutral-900 border-b border-neutral-200 pb-2">
-                  3. Payment Gateways & Numbers (bKash / Nagad / Rocket)
+                  4. Payment Gateways & Numbers (bKash / Nagad / Rocket)
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                   <div className="p-3 bg-pink-50 border border-pink-200 rounded-xl space-y-2">
@@ -2164,7 +2473,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               {/* Contact & Policies */}
               <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-4">
                 <h3 className="text-sm font-bold text-neutral-900 border-b border-neutral-200 pb-2">
-                  4. Contact & Address
+                  5. Helpline Contact & Address
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
@@ -2197,7 +2506,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 </div>
               </div>
 
-              {/* Section 5: Admin Account Credentials & Security */}
+              {/* Section 6: Admin Account Credentials & Security */}
               <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-2">
                   <div className="flex items-center gap-2">
@@ -2206,7 +2515,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-neutral-900">
-                        5. Admin Account Credentials & Security
+                        6. Admin Account Credentials & Security
                       </h3>
                       <p className="text-[11px] text-neutral-500">
                         Configure master admin login email and password. Any changes strictly require verifying your active password.

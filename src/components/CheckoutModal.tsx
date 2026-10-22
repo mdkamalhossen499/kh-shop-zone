@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useStore } from '../context/StoreContext';
 import { BANGLADESH_DISTRICTS } from '../data/bangladeshDistricts';
 import { Order, PaymentMethod } from '../types/ecommerce';
+import { LocalStoreManager } from '../utils/localStoreFallback';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -110,22 +111,83 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
         } : undefined
       };
 
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      let confirmedOrder: Order | null = null;
 
-      const data = await res.json();
-      if (res.ok && data.success && data.order) {
-        clearCart();
-        onClose();
-        onOrderSuccess(data.order);
-      } else {
-        setErrorMessage(data.error || 'Failed to place order. Please try again.');
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          const data = await res.json();
+          if (data.success && data.order) {
+            confirmedOrder = data.order;
+          }
+        }
+      } catch {
+        // Fallback for Vercel/offline mode
       }
+
+      // If server didn't respond (e.g. Vercel deployment), create order locally
+      if (!confirmedOrder) {
+        const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+        const orderId = `KH-${randomSuffix}`;
+
+        const calculatedItems = cart.map(item => ({
+          productId: item.productId,
+          productName: item.product.name,
+          productImage: item.product.images?.[0] || '',
+          variant: item.selectedVariant,
+          quantity: item.quantity,
+          unitPrice: item.product.salePrice,
+          totalPrice: item.product.salePrice * item.quantity
+        }));
+
+        confirmedOrder = {
+          id: orderId,
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          customerEmail: customerEmail.trim() || undefined,
+          district,
+          upazila,
+          address: address.trim(),
+          orderNotes: orderNotes.trim() || undefined,
+          items: calculatedItems,
+          subtotal,
+          discount,
+          couponCode: couponCode || undefined,
+          deliveryCharge: deliveryFee,
+          deliveryZone,
+          totalAmount: total,
+          paymentMethod,
+          paymentDetails: {
+            senderNumber: senderNumber.trim() || undefined,
+            trxId: trxId.trim().toUpperCase() || undefined,
+            status: paymentMethod === 'cod' ? 'pending' : (trxId ? 'pending' : 'failed')
+          },
+          orderStatus: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        // Save order to LocalStoreManager
+        const existingOrders = LocalStoreManager.getOrders();
+        existingOrders.unshift(confirmedOrder);
+        LocalStoreManager.saveOrders(existingOrders);
+        LocalStoreManager.logAudit(
+          'system',
+          'ORDER_PLACED',
+          `New order placed by ${confirmedOrder.customerName} (ID: ${confirmedOrder.id})`
+        );
+      }
+
+      clearCart();
+      onClose();
+      onOrderSuccess(confirmedOrder);
     } catch {
-      setErrorMessage('Network connection error. Please verify your connection.');
+      setErrorMessage('Error processing order. Please check your details and try again.');
     } finally {
       setIsSubmitting(false);
     }

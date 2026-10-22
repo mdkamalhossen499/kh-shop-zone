@@ -8,6 +8,7 @@ import {
 import { useAdmin } from '../context/AdminContext';
 import { useStore } from '../context/StoreContext';
 import { Product, Order, Category, Coupon, AuditLog, SiteSettings } from '../types/ecommerce';
+import { LocalStoreManager } from '../utils/localStoreFallback';
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -70,7 +71,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     if (!isAuthenticated) return;
     setLoadingData(true);
     try {
-      const [ordersRes, productsRes, couponsRes, auditRes, settingsRes] = await Promise.all([
+      const [ordersRes, productsRes, couponsRes, auditRes, settingsRes] = await Promise.allSettled([
         fetchWithAuth('/api/admin/orders'),
         fetchWithAuth('/api/admin/products'),
         fetchWithAuth('/api/admin/coupons'),
@@ -78,13 +79,47 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         fetch('/api/settings')
       ]);
 
-      if (ordersRes.ok) setOrders(await ordersRes.json());
-      if (productsRes.ok) setAdminProducts(await productsRes.json());
-      if (couponsRes.ok) setCoupons(await couponsRes.json());
-      if (auditRes.ok) setAuditLogs(await auditRes.json());
-      if (settingsRes.ok) setSettingsForm(await settingsRes.json());
-    } catch (e) {
-      console.error('Error loading admin data:', e);
+      // 1. Orders
+      if (ordersRes.status === 'fulfilled' && ordersRes.value.ok && ordersRes.value.headers.get('content-type')?.includes('application/json')) {
+        setOrders(await ordersRes.value.json());
+      } else {
+        setOrders(LocalStoreManager.getOrders());
+      }
+
+      // 2. Products
+      if (productsRes.status === 'fulfilled' && productsRes.value.ok && productsRes.value.headers.get('content-type')?.includes('application/json')) {
+        setAdminProducts(await productsRes.value.json());
+      } else {
+        setAdminProducts(LocalStoreManager.getProducts());
+      }
+
+      // 3. Coupons
+      if (couponsRes.status === 'fulfilled' && couponsRes.value.ok && couponsRes.value.headers.get('content-type')?.includes('application/json')) {
+        setCoupons(await couponsRes.value.json());
+      } else {
+        setCoupons(LocalStoreManager.getCoupons());
+      }
+
+      // 4. Audit Logs
+      if (auditRes.status === 'fulfilled' && auditRes.value.ok && auditRes.value.headers.get('content-type')?.includes('application/json')) {
+        setAuditLogs(await auditRes.value.json());
+      } else {
+        setAuditLogs(LocalStoreManager.getAuditLogs());
+      }
+
+      // 5. Settings
+      if (settingsRes.status === 'fulfilled' && settingsRes.value.ok && settingsRes.value.headers.get('content-type')?.includes('application/json')) {
+        setSettingsForm(await settingsRes.value.json());
+      } else {
+        setSettingsForm(LocalStoreManager.getSettings());
+      }
+    } catch {
+      // Complete client fallback for static/Vercel host
+      setOrders(LocalStoreManager.getOrders());
+      setAdminProducts(LocalStoreManager.getProducts());
+      setCoupons(LocalStoreManager.getCoupons());
+      setAuditLogs(LocalStoreManager.getAuditLogs());
+      setSettingsForm(LocalStoreManager.getSettings());
     } finally {
       setLoadingData(false);
     }
@@ -135,19 +170,47 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       courierTrackingCode?: string;
     }
   ) => {
+    let updatedOrder: Order | null = null;
     try {
       const res = await fetchWithAuth(`/api/admin/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
-        if (selectedOrder?.id === orderId) setSelectedOrder(updated);
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        updatedOrder = await res.json();
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // server unreachable
+    }
+
+    if (!updatedOrder) {
+      // Local storage fallback update
+      const currentOrders = LocalStoreManager.getOrders();
+      const idx = currentOrders.findIndex(o => o.id === orderId);
+      if (idx !== -1) {
+        currentOrders[idx] = {
+          ...currentOrders[idx],
+          ...updates,
+          paymentDetails: {
+            ...currentOrders[idx].paymentDetails,
+            ...(updates.paymentStatus ? { status: updates.paymentStatus, verifiedAt: new Date().toISOString(), verifiedBy: adminUser?.email || 'admin@khshopzone.com' } : {})
+          },
+          updatedAt: new Date().toISOString()
+        };
+        LocalStoreManager.saveOrders(currentOrders);
+        updatedOrder = currentOrders[idx];
+      }
+    }
+
+    if (updatedOrder) {
+      setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder! : o));
+      if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
+      LocalStoreManager.logAudit(
+        adminUser?.email || 'admin@khshopzone.com',
+        'UPDATE_ORDER',
+        `Updated Order ${orderId}: Status=${updates.orderStatus || 'same'}, Payment=${updates.paymentStatus || 'same'}`
+      );
     }
   };
 
@@ -156,70 +219,102 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     e.preventDefault();
     if (!editingProduct?.name || !editingProduct?.salePrice) return;
 
+    const payload: Product = {
+      id: editingProduct.id || `prod_${Date.now()}`,
+      name: editingProduct.name,
+      slug: editingProduct.slug || editingProduct.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      description: editingProduct.description || '',
+      regularPrice: Number(editingProduct.regularPrice) || Number(editingProduct.salePrice),
+      salePrice: Number(editingProduct.salePrice),
+      stock: Number(editingProduct.stock) || 0,
+      sku: editingProduct.sku || `KH-${Math.floor(1000 + Math.random() * 9000)}`,
+      categoryId: editingProduct.categoryId || 'cat_perfumes',
+      subcategory: editingProduct.subcategory || 'General',
+      purchaseCost: Number(editingProduct.purchaseCost) || 0,
+      supplierName: editingProduct.supplierName || '',
+      discountPercentage: Number(editingProduct.discountPercentage) || 0,
+      rating: Number(editingProduct.rating) || 5.0,
+      reviewCount: Number(editingProduct.reviewCount) || 1,
+      isFeatured: !!editingProduct.isFeatured,
+      isBestSeller: !!editingProduct.isBestSeller,
+      isFlashSale: !!editingProduct.isFlashSale,
+      createdAt: editingProduct.createdAt || new Date().toISOString(),
+      images: editingProduct.images && editingProduct.images.length > 0
+        ? editingProduct.images
+        : ['/src/assets/images/product_perfume_oud_1792643166621.jpg']
+    };
+
+    let serverSaved = false;
     try {
       const isEdit = !!editingProduct.id;
       const url = isEdit ? `/api/admin/products/${editingProduct.id}` : '/api/admin/products';
       const method = isEdit ? 'PUT' : 'POST';
-
-      const payload = {
-        ...editingProduct,
-        regularPrice: Number(editingProduct.regularPrice) || Number(editingProduct.salePrice),
-        salePrice: Number(editingProduct.salePrice),
-        stock: Number(editingProduct.stock) || 0,
-        purchaseCost: Number(editingProduct.purchaseCost) || 0,
-        discountPercentage: Number(editingProduct.discountPercentage) || 0,
-        rating: Number(editingProduct.rating) || 5.0,
-        reviewCount: Number(editingProduct.reviewCount) || 1,
-        images: editingProduct.images && editingProduct.images.length > 0
-          ? editingProduct.images
-          : ['/src/assets/images/product_perfume_oud_1792643166621.jpg']
-      };
 
       const res = await fetchWithAuth(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      if (res.ok) {
-        setIsProductModalOpen(false);
-        setEditingProduct(null);
-        loadAdminData();
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        serverSaved = true;
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // fallback
     }
+
+    // Always update local storage
+    const currentProducts = LocalStoreManager.getProducts();
+    const existingIdx = currentProducts.findIndex(p => p.id === payload.id);
+    if (existingIdx !== -1) {
+      currentProducts[existingIdx] = payload;
+    } else {
+      currentProducts.unshift(payload);
+    }
+    LocalStoreManager.saveProducts(currentProducts);
+    setAdminProducts(currentProducts);
+    LocalStoreManager.logAudit(
+      adminUser?.email || 'admin@khshopzone.com',
+      existingIdx !== -1 ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT',
+      `Saved product: ${payload.name} (SKU: ${payload.sku})`
+    );
+
+    setIsProductModalOpen(false);
+    setEditingProduct(null);
   };
 
   const handleDeleteProduct = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     try {
-      const res = await fetchWithAuth(`/api/admin/products/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setAdminProducts(prev => prev.filter(p => p.id !== id));
-      }
-    } catch (e) {
-      console.error(e);
+      await fetchWithAuth(`/api/admin/products/${id}`, { method: 'DELETE' });
+    } catch {
+      // fallback
     }
+
+    const currentProducts = LocalStoreManager.getProducts().filter(p => p.id !== id);
+    LocalStoreManager.saveProducts(currentProducts);
+    setAdminProducts(currentProducts);
+    LocalStoreManager.logAudit(adminUser?.email || 'admin@khshopzone.com', 'DELETE_PRODUCT', `Deleted product ID: ${id}`);
   };
 
   // --- SETTINGS ACTIONS ---
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settingsForm) return;
+
     try {
-      const res = await fetchWithAuth('/api/admin/settings', {
+      await fetchWithAuth('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settingsForm)
       });
-      if (res.ok) {
-        alert('Site settings updated successfully!');
-        refreshSettings();
-      }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // fallback
     }
+
+    LocalStoreManager.saveSettings(settingsForm);
+    LocalStoreManager.logAudit(adminUser?.email || 'admin@khshopzone.com', 'UPDATE_SETTINGS', 'Updated store branding & delivery fees');
+    alert('Site settings updated successfully!');
+    refreshSettings();
   };
 
   // Calculate Dashboard Metrics

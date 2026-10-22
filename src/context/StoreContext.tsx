@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { SiteSettings, Category, Product } from '../types/ecommerce';
+import { LocalStoreManager } from '../utils/localStoreFallback';
 
 interface StoreContextType {
   settings: SiteSettings | null;
@@ -16,46 +17,55 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [settings, setSettings] = useState<SiteSettings | null>(() => LocalStoreManager.getSettings());
+  const [categories, setCategories] = useState<Category[]>(() => LocalStoreManager.getCategories());
+  const [products, setProducts] = useState<Product[]>(() => LocalStoreManager.getProducts());
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [language, setLanguage] = useState<'en' | 'bn'>('en');
 
   const refreshSettings = async () => {
     try {
       const res = await fetch('/api/settings');
-      if (res.ok) {
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json();
         setSettings(data);
+        LocalStoreManager.saveSettings(data);
+        return;
       }
-    } catch (e) {
-      console.error('Failed to load settings:', e);
+    } catch {
+      // fallback
     }
+    setSettings(LocalStoreManager.getSettings());
   };
 
   const refreshCategories = async () => {
     try {
       const res = await fetch('/api/categories');
-      if (res.ok) {
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json();
         setCategories(data);
+        LocalStoreManager.saveCategories(data);
+        return;
       }
-    } catch (e) {
-      console.error('Failed to load categories:', e);
+    } catch {
+      // fallback
     }
+    setCategories(LocalStoreManager.getCategories());
   };
 
   const refreshProducts = async () => {
     try {
       const res = await fetch('/api/products');
-      if (res.ok) {
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json();
         setProducts(data);
+        LocalStoreManager.saveProducts(data);
+        return;
       }
-    } catch (e) {
-      console.error('Failed to load products:', e);
+    } catch {
+      // fallback
     }
+    setProducts(LocalStoreManager.getProducts());
   };
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { CartItem, Product } from '../types/ecommerce';
 import { useStore } from './StoreContext';
+import { LocalStoreManager } from '../utils/localStoreFallback';
 
 interface CartContextType {
   cart: CartItem[];
@@ -164,27 +165,60 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const freeDeliveryRemaining = Math.max(0, freeThreshold - subtotal);
 
   const applyCoupon = async (code: string): Promise<boolean> => {
+    const cleanCode = code.trim().toUpperCase();
+
     try {
       const res = await fetch('/api/coupons/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim(), subtotal })
+        body: JSON.stringify({ code: cleanCode, subtotal })
       });
-      const data = await res.json();
-      if (data.valid) {
-        setCouponCode(code.trim().toUpperCase());
-        setDiscount(data.discount || 0);
-        setIsFreeShipping(data.freeShipping || false);
-        setCouponMessage(data.message || 'Coupon applied successfully!');
-        return true;
-      } else {
-        setCouponMessage(data.message || 'Invalid coupon code');
-        return false;
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.valid) {
+          setCouponCode(cleanCode);
+          setDiscount(data.discount || 0);
+          setIsFreeShipping(data.freeShipping || false);
+          setCouponMessage(data.message || 'Coupon applied successfully!');
+          return true;
+        } else {
+          setCouponMessage(data.message || 'Invalid coupon code');
+          return false;
+        }
       }
     } catch {
-      setCouponMessage('Error validating coupon. Please try again.');
+      // offline/Vercel fallback
+    }
+
+    // Local fallback
+    const coupons = LocalStoreManager.getCoupons();
+    const coupon = coupons.find(c => c.code.toUpperCase() === cleanCode && c.isActive);
+    if (!coupon) {
+      setCouponMessage('Invalid coupon code');
       return false;
     }
+    if (subtotal < coupon.minOrderAmount) {
+      setCouponMessage(`Minimum order of ৳${coupon.minOrderAmount} required.`);
+      return false;
+    }
+
+    setCouponCode(cleanCode);
+    if (coupon.discountType === 'percentage') {
+      let d = Math.round((subtotal * coupon.discountValue) / 100);
+      if (coupon.maxDiscount && d > coupon.maxDiscount) d = coupon.maxDiscount;
+      setDiscount(d);
+      setIsFreeShipping(false);
+      setCouponMessage(`${coupon.discountValue}% discount applied!`);
+    } else if (coupon.discountType === 'fixed') {
+      setDiscount(coupon.discountValue);
+      setIsFreeShipping(false);
+      setCouponMessage(`৳${coupon.discountValue} discount applied!`);
+    } else if (coupon.discountType === 'free_shipping') {
+      setDiscount(0);
+      setIsFreeShipping(true);
+      setCouponMessage('Free Shipping applied!');
+    }
+    return true;
   };
 
   const removeCoupon = () => {

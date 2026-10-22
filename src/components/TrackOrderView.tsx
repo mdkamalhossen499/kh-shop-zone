@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Package, CheckCircle2, Clock, Truck, ShieldAlert, ArrowLeft, RefreshCw, XCircle } from 'lucide-react';
 import { Order } from '../types/ecommerce';
+import { LocalStoreManager } from '../utils/localStoreFallback';
 
 interface TrackOrderViewProps {
   initialOrderId?: string;
@@ -28,23 +29,43 @@ export function TrackOrderView({ initialOrderId, onBackToHome }: TrackOrderViewP
     setErrorMessage('');
     setHasSearched(true);
 
+    let foundOrders: Order[] = [];
+
     try {
       const isOrderId = query.trim().toUpperCase().startsWith('KH-');
       const param = isOrderId ? `orderId=${encodeURIComponent(query.trim())}` : `phone=${encodeURIComponent(query.trim())}`;
       const res = await fetch(`/api/orders/track?${param}`);
-      const data = await res.json();
-
-      if (res.ok && Array.isArray(data) && data.length > 0) {
-        setOrders(data);
-      } else {
-        setOrders([]);
-        setErrorMessage(data.error || 'No orders found with that reference. Please check the spelling or mobile number.');
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          foundOrders = data;
+        }
       }
     } catch {
-      setErrorMessage('Failed to connect to the tracking server. Please try again.');
-    } finally {
-      setLoading(false);
+      // Fallback for Vercel/offline mode
     }
+
+    if (foundOrders.length === 0) {
+      // Search in LocalStoreManager
+      const allOrders = LocalStoreManager.getOrders();
+      const q = query.trim().toLowerCase();
+      const cleanQPhone = query.replace(/\D/g, '');
+
+      foundOrders = allOrders.filter(o => {
+        const matchId = o.id.toLowerCase() === q;
+        const matchPhone = cleanQPhone.length >= 6 && o.customerPhone.replace(/\D/g, '').includes(cleanQPhone);
+        return matchId || matchPhone;
+      });
+    }
+
+    if (foundOrders.length > 0) {
+      setOrders(foundOrders);
+    } else {
+      setOrders([]);
+      setErrorMessage(`No orders found matching '${query}'. Please check your Order ID (e.g. KH-829104) or phone number.`);
+    }
+
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -66,6 +87,8 @@ export function TrackOrderView({ initialOrderId, onBackToHome }: TrackOrderViewP
     setCancelError('');
     setCancelSuccess('');
 
+    let cancelDone = false;
+
     try {
       const res = await fetch('/api/orders/cancel', {
         method: 'POST',
@@ -77,25 +100,60 @@ export function TrackOrderView({ initialOrderId, onBackToHome }: TrackOrderViewP
         })
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setCancelSuccess('Order was successfully cancelled.');
-        // Update local state
-        setOrders(prev => prev.map(o => o.id === cancellingOrder.id ? { ...o, orderStatus: 'cancelled' } : o));
-        setTimeout(() => {
-          setCancellingOrder(null);
-          setCancelSuccess('');
-          setCancelPhone('');
-          setCancelReason('');
-        }, 1500);
-      } else {
-        setCancelError(data.error || 'Cancellation failed. Make sure phone matches order record.');
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          cancelDone = true;
+        }
       }
     } catch {
-      setCancelError('Network error cancelling order.');
-    } finally {
-      setCancelling(false);
+      // server unreachable
     }
+
+    if (!cancelDone) {
+      // Verify phone against order
+      const cleanOrderPhone = cancellingOrder.customerPhone.replace(/\D/g, '');
+      const cleanInputPhone = cancelPhone.replace(/\D/g, '');
+
+      if (!cleanOrderPhone.endsWith(cleanInputPhone) && !cleanInputPhone.endsWith(cleanOrderPhone)) {
+        setCancelError('Phone number does not match order record.');
+        setCancelling(false);
+        return;
+      }
+
+      if (cancellingOrder.orderStatus !== 'pending') {
+        setCancelError(`Orders with status '${cancellingOrder.orderStatus}' cannot be self-cancelled.`);
+        setCancelling(false);
+        return;
+      }
+
+      const allOrders = LocalStoreManager.getOrders();
+      const updated = allOrders.map(o => {
+        if (o.id === cancellingOrder.id) {
+          return {
+            ...o,
+            orderStatus: 'cancelled' as const,
+            cancellationReason: cancelReason.trim() || 'Customer requested cancellation',
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return o;
+      });
+      LocalStoreManager.saveOrders(updated);
+      cancelDone = true;
+    }
+
+    if (cancelDone) {
+      setCancelSuccess('Order was successfully cancelled.');
+      setOrders(prev => prev.map(o => o.id === cancellingOrder.id ? { ...o, orderStatus: 'cancelled' } : o));
+      setTimeout(() => {
+        setCancellingOrder(null);
+        setCancelSuccess('');
+        setCancelPhone('');
+        setCancelReason('');
+      }, 1500);
+    }
+    setCancelling(false);
   };
 
   const getStepProgress = (status: Order['orderStatus']) => {

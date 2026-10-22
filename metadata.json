@@ -1,0 +1,6 @@
+{
+  "name": "KH SHOP ZONE",
+  "description": "KH SHOP ZONE — Bangladesh's premier multi-category e-commerce platform with Cash on Delivery, bKash, Nagad & Rocket payments, instant order tracking, and full admin management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

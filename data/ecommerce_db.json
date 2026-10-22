@@ -73,10 +73,10 @@
   "admins": [
     {
       "id": "admin_1",
-      "email": "admin@khshopzone.com",
+      "email": "hossenmdkamalhossen499@gmail.com",
       "name": "Kamal Hossen (Chief Admin)",
       "role": "super_admin",
-      "passwordHash": "b744e8f2550aa340f5579e73052ade1f07905c605f3833f18ff277ae074223e3",
+      "passwordHash": "02cc39e7567fd7c8bf530209b8a4e342f9be571b6d1f30bb5c24fd7534fc4725",
       "salt": "kh_shop_zone_salt_2026",
       "createdAt": "2026-10-22T04:39:15.282Z"
     }

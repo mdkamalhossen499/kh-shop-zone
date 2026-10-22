@@ -9,6 +9,7 @@ interface AdminContextType {
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   changePassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
+  changeCredentials: (currentPassword: string, newEmail?: string, newPassword?: string) => Promise<{ success: boolean; error?: string }>;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
@@ -78,7 +79,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         }
       } else if (res.status === 401 && contentType.includes('application/json')) {
         const data = await res.json();
-        return { success: false, error: data.error || 'Invalid credentials' };
+        return { success: false, error: data.error || 'Invalid admin credentials' };
       }
     } catch {
       // Server is unreachable or running in static frontend mode (e.g. Vercel deployment)
@@ -90,7 +91,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       const fallbackToken = `kh_token_${Date.now()}_${Math.random().toString(36).substring(2)}`;
       const safeUser: Omit<AdminUser, 'passwordHash' | 'salt'> = {
         id: 'admin_local_1',
-        email: email.trim(),
+        email: LocalStoreManager.getAdminEmail(),
         name: 'Kamal Hossen (Chief Admin)',
         role: 'super_admin',
         createdAt: new Date().toISOString()
@@ -117,33 +118,72 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('kh_admin_user');
   };
 
-  const changePassword = async (oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+  const changeCredentials = async (
+    currentPassword: string,
+    newEmail?: string,
+    newPassword?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanCurrentPass = currentPassword.trim();
+    const cleanNewEmail = newEmail ? newEmail.trim().toLowerCase() : undefined;
+    const cleanNewPass = newPassword ? newPassword.trim() : undefined;
+
+    // 1. Try server-side API first
     try {
-      const res = await fetchWithAuth('/api/admin/change-password', {
+      const res = await fetchWithAuth('/api/admin/change-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPassword, newPassword })
+        body: JSON.stringify({
+          currentPassword: cleanCurrentPass,
+          newEmail: cleanNewEmail,
+          newPassword: cleanNewPass
+        })
       });
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
         if (data.success) {
+          if (cleanNewEmail) LocalStoreManager.setAdminEmail(cleanNewEmail);
+          if (cleanNewPass) LocalStoreManager.setAdminPassword(cleanNewPass);
+          if (data.user) {
+            setAdminUser(data.user);
+            localStorage.setItem('kh_admin_user', JSON.stringify(data.user));
+          }
           return { success: true };
         }
       }
     } catch {
-      // Fallback to local storage password update
+      // Fallback to local storage update
     }
 
-    // Verify old password against local store
+    // 2. Client-Side verification and persistence
     const storedPass = LocalStoreManager.getAdminPassword();
-    if (oldPassword === storedPass || oldPassword === 'khAdmin@2026!') {
-      LocalStoreManager.setAdminPassword(newPassword);
-      LocalStoreManager.logAudit(adminUser?.email || 'admin@khshopzone.com', 'CHANGE_PASSWORD', 'Updated admin password');
+    if (cleanCurrentPass === storedPass) {
+      if (cleanNewEmail && cleanNewEmail.length > 0) {
+        LocalStoreManager.setAdminEmail(cleanNewEmail);
+      }
+      if (cleanNewPass && cleanNewPass.length >= 6) {
+        LocalStoreManager.setAdminPassword(cleanNewPass);
+      }
+
+      const updatedUser = {
+        id: adminUser?.id || 'admin_local_1',
+        email: cleanNewEmail || LocalStoreManager.getAdminEmail(),
+        name: adminUser?.name || 'Kamal Hossen (Chief Admin)',
+        role: adminUser?.role || 'super_admin',
+        createdAt: adminUser?.createdAt || new Date().toISOString()
+      };
+
+      setAdminUser(updatedUser);
+      localStorage.setItem('kh_admin_user', JSON.stringify(updatedUser));
+      LocalStoreManager.logAudit(updatedUser.email, 'UPDATE_CREDENTIALS', 'Updated admin security credentials');
       return { success: true };
     }
 
-    return { success: false, error: 'Current password is incorrect' };
+    return { success: false, error: 'Current password is incorrect. Verification failed.' };
+  };
+
+  const changePassword = async (oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    return changeCredentials(oldPassword, undefined, newPassword);
   };
 
   return (
@@ -155,6 +195,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         changePassword,
+        changeCredentials,
         fetchWithAuth
       }}
     >

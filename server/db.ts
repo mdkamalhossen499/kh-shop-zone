@@ -26,7 +26,7 @@ export function generateSalt(): string {
 }
 
 const defaultSalt = 'kh_shop_zone_salt_2026';
-const defaultHashedPassword = hashPassword('khAdmin@2026!', defaultSalt);
+const defaultHashedPassword = hashPassword('MSK01865@', defaultSalt);
 
 const initialDatabase: DatabaseSchema = {
   settings: {
@@ -103,7 +103,7 @@ const initialDatabase: DatabaseSchema = {
   admins: [
     {
       id: 'admin_1',
-      email: 'admin@khshopzone.com',
+      email: 'hossenmdkamalhossen499@gmail.com',
       name: 'Kamal Hossen (Chief Admin)',
       role: 'super_admin',
       passwordHash: defaultHashedPassword,
@@ -1027,18 +1027,36 @@ export class Database {
   }
 
   public changeAdminPassword(email: string, oldPass: string, newPass: string): { success: boolean; error?: string } {
-    const admin = this.getAdminByEmail(email);
+    return this.changeAdminCredentials(email, oldPass, undefined, newPass);
+  }
+
+  public changeAdminCredentials(
+    currentEmail: string,
+    currentPass: string,
+    newEmail?: string,
+    newPass?: string
+  ): { success: boolean; user?: Omit<AdminUser, 'passwordHash' | 'salt'>; error?: string } {
+    const admin = this.getAdminByEmail(currentEmail);
     if (!admin) return { success: false, error: 'Admin account not found' };
-    const currentHash = hashPassword(oldPass, admin.salt);
+    const currentHash = hashPassword(currentPass, admin.salt);
     if (currentHash !== admin.passwordHash) {
       return { success: false, error: 'Current password is incorrect' };
     }
-    const newSalt = generateSalt();
-    admin.salt = newSalt;
-    admin.passwordHash = hashPassword(newPass, newSalt);
-    this.logAudit(email, 'CHANGE_PASSWORD', 'Successfully updated admin password');
+
+    if (newPass && newPass.trim().length >= 6) {
+      const newSalt = generateSalt();
+      admin.salt = newSalt;
+      admin.passwordHash = hashPassword(newPass.trim(), newSalt);
+    }
+
+    if (newEmail && newEmail.trim().length > 0 && newEmail.trim().toLowerCase() !== admin.email.toLowerCase()) {
+      admin.email = newEmail.trim().toLowerCase();
+    }
+
+    this.logAudit(admin.email, 'UPDATE_CREDENTIALS', 'Successfully updated admin credentials');
     this.save();
-    return { success: true };
+    const { passwordHash, salt, ...safeUser } = admin;
+    return { success: true, user: safeUser };
   }
 
   public logAudit(adminEmail: string, action: string, details: string): void {

@@ -498,10 +498,13 @@ export const DEFAULT_COUPONS: Coupon[] = [
   }
 ];
 
+export const DEFAULT_ADMIN_EMAIL = 'hossenmdkamalhossen499@gmail.com';
+export const DEFAULT_ADMIN_PASSWORD = 'MSK01865@';
+
 export const DEFAULT_AUDIT_LOGS: AuditLog[] = [
   {
     id: 'log_init',
-    adminEmail: 'admin@khshopzone.com',
+    adminEmail: 'hossenmdkamalhossen499@gmail.com',
     action: 'SYSTEM_BOOTSTRAP',
     details: 'KH SHOP ZONE storage engine initialized with full product catalog and multi-carrier settings.',
     timestamp: new Date().toISOString()
@@ -510,25 +513,53 @@ export const DEFAULT_AUDIT_LOGS: AuditLog[] = [
 
 // Local Storage Helper Class
 export class LocalStoreManager {
+  public static getAdminEmail(): string {
+    try {
+      const stored = localStorage.getItem('kh_admin_email_custom');
+      if (stored && stored !== 'admin@khshopzone.com' && stored.trim().length > 0) {
+        return stored.trim().toLowerCase();
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_ADMIN_EMAIL;
+  }
+
+  public static setAdminEmail(newEmail: string): void {
+    try {
+      localStorage.setItem('kh_admin_email_custom', newEmail.trim().toLowerCase());
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   public static getAdminPassword(): string {
-    return localStorage.getItem('kh_admin_password_custom') || 'khAdmin@2026!';
+    try {
+      const stored = localStorage.getItem('kh_admin_password_custom');
+      if (stored && stored !== 'khAdmin@2026!' && stored.trim().length > 0) {
+        return stored.trim();
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_ADMIN_PASSWORD;
   }
 
   public static setAdminPassword(newPass: string): void {
-    localStorage.setItem('kh_admin_password_custom', newPass);
+    try {
+      localStorage.setItem('kh_admin_password_custom', newPass.trim());
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   public static verifyAdmin(email: string, pass: string): boolean {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = pass.trim();
-    const storedPass = this.getAdminPassword();
+    const activeEmail = this.getAdminEmail().trim().toLowerCase();
+    const activePass = this.getAdminPassword().trim();
 
-    const isAuthorizedEmail =
-      cleanEmail === 'admin@khshopzone.com' ||
-      cleanEmail === 'kamal@khshopzone.com' ||
-      cleanEmail === 'admin';
-
-    return isAuthorizedEmail && cleanPass === storedPass;
+    return cleanEmail === activeEmail && cleanPass === activePass;
   }
 
   public static getSettings(): SiteSettings {

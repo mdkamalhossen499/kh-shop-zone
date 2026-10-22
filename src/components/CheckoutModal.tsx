@@ -41,6 +41,8 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [senderNumberError, setSenderNumberError] = useState('');
+  const [trxIdError, setTrxIdError] = useState('');
 
   // Update upazilas when district changes
   const selectedDistrictInfo = BANGLADESH_DISTRICTS.find(d => d.name === district) || BANGLADESH_DISTRICTS[0];
@@ -53,6 +55,12 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
     }
   }, [district]);
 
+  // Reset payment validation errors when payment method switches
+  useEffect(() => {
+    setSenderNumberError('');
+    setTrxIdError('');
+  }, [paymentMethod]);
+
   if (!isOpen) return null;
 
   const handleCopy = (text: string) => {
@@ -64,6 +72,8 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setSenderNumberError('');
+    setTrxIdError('');
 
     if (!customerName.trim()) {
       setErrorMessage('Please enter your full name.');
@@ -81,9 +91,31 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
       return;
     }
 
-    if (paymentMethod !== 'cod' && !trxId.trim()) {
-      setErrorMessage(`Please provide your 8 to 10-digit ${paymentMethod.toUpperCase()} Transaction ID (TrxID).`);
-      return;
+    // Mandatory payment validation for bKash, Nagad, Rocket
+    if (paymentMethod !== 'cod') {
+      let hasPaymentError = false;
+      const cleanSender = senderNumber.replace(/\D/g, '');
+
+      if (!senderNumber.trim()) {
+        setSenderNumberError('Sender Mobile Number is required to verify your payment.');
+        hasPaymentError = true;
+      } else if (cleanSender.length < 11) {
+        setSenderNumberError('Please enter a valid 11-digit sender phone number (e.g. 01712345678).');
+        hasPaymentError = true;
+      }
+
+      if (!trxId.trim()) {
+        setTrxIdError(`Transaction ID (TrxID) is required for ${paymentMethod.toUpperCase()} payments.`);
+        hasPaymentError = true;
+      } else if (trxId.trim().length < 6) {
+        setTrxIdError('Transaction ID must be at least 6 characters long.');
+        hasPaymentError = true;
+      }
+
+      if (hasPaymentError) {
+        setErrorMessage(`Please complete all mandatory payment verification fields for ${paymentMethod.toUpperCase()}.`);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -433,32 +465,57 @@ export function CheckoutModal({ isOpen, onClose, onOrderSuccess }: CheckoutModal
                   {paymentConfig?.[paymentMethod]?.instructions}
                 </div>
 
-                {/* TrxID and Sender Input */}
+                {/* TrxID and Sender Input with Mandatory Validation */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <div>
-                    <label className="block text-neutral-700 font-medium mb-1">
-                      Sender Mobile Number
+                    <label className="block text-neutral-800 font-semibold mb-1">
+                      Sender Mobile Number <span className="text-red-600 font-bold">*</span>
                     </label>
                     <input
                       type="tel"
                       placeholder="e.g. 017XXXXXXXX"
                       value={senderNumber}
-                      onChange={e => setSenderNumber(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs"
+                      onChange={e => {
+                        setSenderNumber(e.target.value);
+                        if (senderNumberError) setSenderNumberError('');
+                      }}
+                      className={`w-full px-3 py-2 bg-white border rounded-lg text-xs transition-colors ${
+                        senderNumberError ? 'border-red-500 bg-red-50/30 focus:border-red-600' : 'border-neutral-300 focus:border-neutral-900'
+                      }`}
                     />
+                    {senderNumberError ? (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>{senderNumberError}</span>
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-neutral-500 mt-1">Number used to send money</p>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-neutral-700 font-medium mb-1">
-                      Transaction ID (TrxID) <span className="text-red-500">*</span>
+                    <label className="block text-neutral-800 font-semibold mb-1">
+                      Transaction ID (TrxID) <span className="text-red-600 font-bold">*</span>
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. 9K28M910QP"
                       value={trxId}
-                      onChange={e => setTrxId(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-mono uppercase"
+                      onChange={e => {
+                        setTrxId(e.target.value);
+                        if (trxIdError) setTrxIdError('');
+                      }}
+                      className={`w-full px-3 py-2 bg-white border rounded-lg text-xs font-mono uppercase transition-colors ${
+                        trxIdError ? 'border-red-500 bg-red-50/30 focus:border-red-600' : 'border-neutral-300 focus:border-neutral-900'
+                      }`}
                     />
+                    {trxIdError ? (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        <span>{trxIdError}</span>
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-neutral-500 mt-1">From SMS or app confirmation</p>
+                    )}
                   </div>
                 </div>
 

@@ -332,6 +332,24 @@ app.post('/api/admin/change-password', requireAdminAuth, (req: Request, res: Res
   }
 });
 
+// Admin Change Credentials (Email and/or Password)
+app.post('/api/admin/change-credentials', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const adminEmail = (req as any).adminEmail;
+    const { currentPassword, newEmail, newPassword } = req.body;
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'Current password is required.' });
+    }
+    const result = db.changeAdminCredentials(adminEmail, currentPassword, newEmail, newPassword);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ success: true, user: result.user, message: 'Admin credentials updated successfully.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin Products (includes supplier costs & internal notes)
 app.get('/api/admin/products', requireAdminAuth, (req: Request, res: Response) => {
   res.json(db.getAdminProducts());

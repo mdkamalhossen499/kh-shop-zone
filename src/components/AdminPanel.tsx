@@ -15,7 +15,7 @@ interface AdminPanelProps {
 }
 
 export function AdminPanel({ onClose }: AdminPanelProps) {
-  const { adminUser, isAuthenticated, login, logout, changePassword, fetchWithAuth } = useAdmin();
+  const { adminUser, isAuthenticated, login, logout, changePassword, changeCredentials, fetchWithAuth } = useAdmin();
   const { categories: globalCategories, refreshCategories, refreshSettings } = useStore();
 
   // Navigation tab
@@ -30,7 +30,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  // Password change modal
+  // Password & Credentials change modal
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -39,6 +39,17 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const [showNewPass, setShowNewPass] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  // Credentials management in Settings Tab
+  const [targetAdminEmail, setTargetAdminEmail] = useState('');
+  const [credCurrentPass, setCredCurrentPass] = useState('');
+  const [credNewPass, setCredNewPass] = useState('');
+  const [credConfirmPass, setCredConfirmPass] = useState('');
+  const [credStatusMsg, setCredStatusMsg] = useState('');
+  const [credErrorMsg, setCredErrorMsg] = useState('');
+  const [showCredCurrentPass, setShowCredCurrentPass] = useState(false);
+  const [showCredNewPass, setShowCredNewPass] = useState(false);
+  const [credLoading, setCredLoading] = useState(false);
 
   // Data states
   const [orders, setOrders] = useState<Order[]>([]);
@@ -148,6 +159,14 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     setLoginLoading(false);
   };
 
+  useEffect(() => {
+    if (adminUser?.email) {
+      setTargetAdminEmail(adminUser.email);
+    } else {
+      setTargetAdminEmail(LocalStoreManager.getAdminEmail());
+    }
+  }, [adminUser]);
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordMsg('');
@@ -168,9 +187,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       return;
     }
 
-    const result = await changePassword(oldPassword, newPassword);
+    const result = await changeCredentials(oldPassword, targetAdminEmail.trim() || undefined, newPassword);
     if (result.success) {
-      setPasswordMsg('Password changed successfully! Use this password for your next login.');
+      setPasswordMsg('Admin credentials changed successfully! Use your new credentials for next login.');
       setTimeout(() => {
         setShowPasswordModal(false);
         setOldPassword('');
@@ -179,8 +198,56 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         setPasswordMsg('');
       }, 1800);
     } else {
-      setPasswordError(result.error || 'Failed to update password. Please check your current password.');
+      setPasswordError(result.error || 'Failed to update credentials. Please check your current password.');
     }
+  };
+
+  const handleUpdateCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCredStatusMsg('');
+    setCredErrorMsg('');
+    setCredLoading(true);
+
+    if (!credCurrentPass.trim()) {
+      setCredErrorMsg('Please enter your current password to authorize changes.');
+      setCredLoading(false);
+      return;
+    }
+
+    if (!targetAdminEmail.trim()) {
+      setCredErrorMsg('Admin email cannot be empty.');
+      setCredLoading(false);
+      return;
+    }
+
+    if (credNewPass && credNewPass.length < 6) {
+      setCredErrorMsg('New password must be at least 6 characters long.');
+      setCredLoading(false);
+      return;
+    }
+
+    if (credNewPass && credNewPass !== credConfirmPass) {
+      setCredErrorMsg('New password and confirmation do not match.');
+      setCredLoading(false);
+      return;
+    }
+
+    const result = await changeCredentials(
+      credCurrentPass,
+      targetAdminEmail.trim(),
+      credNewPass ? credNewPass.trim() : undefined
+    );
+
+    if (result.success) {
+      setCredStatusMsg('Admin credentials updated successfully! Persisted safely in store.');
+      setCredCurrentPass('');
+      setCredNewPass('');
+      setCredConfirmPass('');
+      setTimeout(() => setCredStatusMsg(''), 4000);
+    } else {
+      setCredErrorMsg(result.error || 'Failed to update credentials. Current password was incorrect.');
+    }
+    setCredLoading(false);
   };
 
   // --- ORDER ACTIONS ---
@@ -910,17 +977,24 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                           </td>
                           <td className="py-3 px-4 font-bold tabular-nums">৳{order.totalAmount.toLocaleString()}</td>
                           <td className="py-3 px-4">
-                            <div className="flex flex-col">
-                              <span className="font-bold uppercase text-[11px]">{order.paymentMethod}</span>
-                              <span className={`text-[10px] font-semibold ${
-                                order.paymentDetails.status === 'verified' || order.paymentDetails.status === 'paid'
-                                  ? 'text-emerald-700' : 'text-amber-700'
-                              }`}>
-                                {order.paymentDetails.status.toUpperCase()}
-                              </span>
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold uppercase text-[11px]">{order.paymentMethod}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                  order.paymentDetails.status === 'verified' || order.paymentDetails.status === 'paid'
+                                    ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {order.paymentDetails.status}
+                                </span>
+                              </div>
                               {order.paymentDetails.trxId && (
-                                <span className="font-mono text-[10px] text-neutral-500">
+                                <span className="font-mono text-[11px] text-neutral-900 font-bold">
                                   TrxID: {order.paymentDetails.trxId}
+                                </span>
+                              )}
+                              {order.paymentDetails.senderNumber && (
+                                <span className="font-mono text-[11px] text-blue-700 font-semibold">
+                                  Sender: {order.paymentDetails.senderNumber}
                                 </span>
                               )}
                             </div>
@@ -978,6 +1052,63 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                     </div>
 
                     <div className="my-4 space-y-4 text-xs">
+                      {/* Payment Verification Box */}
+                      <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-neutral-900 block">Payment Verification & Financial Records:</span>
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
+                            selectedOrder.paymentDetails.status === 'verified' || selectedOrder.paymentDetails.status === 'paid'
+                              ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            Status: {selectedOrder.paymentDetails.status}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 bg-white rounded-lg border border-neutral-200">
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block font-medium">Payment Method</span>
+                            <span className="font-bold uppercase text-neutral-900">{selectedOrder.paymentMethod}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block font-medium">Transaction ID (TrxID)</span>
+                            <span className="font-mono font-bold text-neutral-900 bg-neutral-100 px-1.5 py-0.5 rounded text-xs inline-block">
+                              {selectedOrder.paymentDetails.trxId || 'N/A (Cash on Delivery)'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block font-medium">Sender Mobile Number</span>
+                            <span className="font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-xs inline-block">
+                              {selectedOrder.paymentDetails.senderNumber || 'N/A (Cash on Delivery)'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block font-medium">Customer Phone</span>
+                            <span className="font-mono font-semibold text-neutral-800">{selectedOrder.customerPhone}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block font-medium">Delivery Destination</span>
+                            <span className="font-semibold text-neutral-800">{selectedOrder.upazila}, {selectedOrder.district}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block font-medium">Order Placed</span>
+                            <span className="text-neutral-700">{new Date(selectedOrder.createdAt).toLocaleString()}</span>
+                          </div>
+                        </div>
+
+                        {selectedOrder.paymentDetails.status !== 'verified' && selectedOrder.paymentMethod !== 'cod' && (
+                          <div className="flex justify-end pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateOrderStatus(selectedOrder.id, { paymentStatus: 'verified' })}
+                              className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>Verify Transaction ID & Mobile Number</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Courier Assignment */}
                       <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 space-y-2">
                         <span className="font-bold text-neutral-800 block">Courier Dispatch & Tracking:</span>
@@ -2009,7 +2140,133 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              {/* Section 5: Admin Account Credentials & Security */}
+              <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-neutral-900 text-amber-400 flex items-center justify-center shrink-0">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-neutral-900">
+                        5. Admin Account Credentials & Security
+                      </h3>
+                      <p className="text-[11px] text-neutral-500">
+                        Configure master admin login email and password. Any changes strictly require verifying your active password.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono bg-neutral-100 text-neutral-700 px-2.5 py-1 rounded font-bold uppercase self-start sm:self-auto">
+                    Chief Administrator
+                  </span>
+                </div>
+
+                {credStatusMsg && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{credStatusMsg}</span>
+                  </div>
+                )}
+
+                {credErrorMsg && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>{credErrorMsg}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-1">
+                  <div>
+                    <label className="block text-neutral-800 font-semibold mb-1">
+                      Admin Login Email Address <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={targetAdminEmail}
+                      onChange={e => setTargetAdminEmail(e.target.value)}
+                      placeholder="hossenmdkamalhossen499@gmail.com"
+                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-lg text-xs font-mono"
+                    />
+                    <span className="text-[10px] text-neutral-400 mt-1 block">
+                      Currently active: <strong className="text-neutral-700">{adminUser?.email || LocalStoreManager.getAdminEmail()}</strong>
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-800 font-semibold mb-1">
+                      New Password (Optional — leave blank to keep unchanged)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showCredNewPass ? 'text' : 'password'}
+                        value={credNewPass}
+                        onChange={e => setCredNewPass(e.target.value)}
+                        placeholder="Min 6 characters (e.g. MSK01865@)"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-lg text-xs pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCredNewPass(!showCredNewPass)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                        tabIndex={-1}
+                      >
+                        {showCredNewPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {credNewPass && (
+                    <div className="sm:col-span-2">
+                      <label className="block text-neutral-800 font-semibold mb-1">
+                        Confirm New Password <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type={showCredNewPass ? 'text' : 'password'}
+                        value={credConfirmPass}
+                        onChange={e => setCredConfirmPass(e.target.value)}
+                        placeholder="Re-enter new password to confirm"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-lg text-xs"
+                      />
+                    </div>
+                  )}
+
+                  <div className="sm:col-span-2 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                    <label className="block text-amber-950 font-bold text-xs">
+                      Current Password (Required for Security Verification) <span className="text-red-600">*</span>
+                    </label>
+                    <div className="relative max-w-md">
+                      <input
+                        type={showCredCurrentPass ? 'text' : 'password'}
+                        value={credCurrentPass}
+                        onChange={e => setCredCurrentPass(e.target.value)}
+                        placeholder="Enter your current password"
+                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-xs pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCredCurrentPass(!showCredCurrentPass)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                        tabIndex={-1}
+                      >
+                        {showCredCurrentPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={handleUpdateCredentials}
+                        disabled={credLoading}
+                        className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-semibold text-xs transition-colors shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{credLoading ? 'Verifying & Saving...' : 'Save & Update Admin Credentials'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
                 <button
                   type="submit"
                   className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-xs rounded-xl shadow-md transition-colors"
@@ -2116,6 +2373,18 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
             )}
 
             <form onSubmit={handleChangePassword} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-neutral-700 font-medium mb-1">Admin Email Address *</label>
+                <input
+                  type="email"
+                  value={targetAdminEmail}
+                  onChange={e => setTargetAdminEmail(e.target.value)}
+                  required
+                  placeholder="e.g. hossenmdkamalhossen499@gmail.com"
+                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono"
+                />
+              </div>
+
               <div>
                 <label className="block text-neutral-700 font-medium mb-1">Current Password *</label>
                 <div className="relative">

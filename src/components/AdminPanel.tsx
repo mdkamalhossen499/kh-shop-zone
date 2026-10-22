@@ -144,10 +144,16 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     }
   };
 
-  // Strict auto-logout security: whenever AdminPanel unmounts or exits, terminate active session
+  // Strict auto-logout & clear inputs on mount/unmount
   useEffect(() => {
+    setLoginEmail('');
+    setLoginPass('');
+    setLoginError('');
     return () => {
       logout();
+      setLoginEmail('');
+      setLoginPass('');
+      setLoginError('');
     };
   }, []);
 
@@ -681,14 +687,21 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4 text-xs">
+          <form onSubmit={handleLogin} className="space-y-4 text-xs" autoComplete="off">
             <div>
               <label className="block text-neutral-700 font-medium mb-1">Admin Email</label>
               <input
+                id="admin_user_login_email"
+                name="admin_user_login_email"
                 type="email"
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
                 required
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="none"
+                placeholder="Enter admin email address"
                 className="w-full px-3 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white text-xs"
               />
             </div>
@@ -697,10 +710,16 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               <label className="block text-neutral-700 font-medium mb-1">Password</label>
               <div className="relative">
                 <input
+                  id="admin_user_login_password"
+                  name="admin_user_login_password"
                   type={showLoginPass ? 'text' : 'password'}
                   value={loginPass}
                   onChange={e => setLoginPass(e.target.value)}
                   required
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="none"
                   placeholder="Enter admin password"
                   className="w-full px-3 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white text-xs pr-10"
                 />

@@ -635,7 +635,11 @@ export class LocalStoreManager {
   public static getOrders(): Order[] {
     try {
       const data = localStorage.getItem('kh_local_orders');
-      return data ? JSON.parse(data) : DEFAULT_ORDERS;
+      if (data !== null) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      return DEFAULT_ORDERS;
     } catch {
       return DEFAULT_ORDERS;
     }
@@ -647,6 +651,13 @@ export class LocalStoreManager {
     } catch (e) {
       console.error(e);
     }
+  }
+
+  public static deleteOrder(id: string, adminEmail: string = 'admin@khshopzone.com'): Order[] {
+    const orders = this.getOrders().filter(o => o.id !== id);
+    this.saveOrders(orders);
+    this.logAudit(adminEmail, 'DELETE_ORDER', `Permanently deleted order #${id}`);
+    return orders;
   }
 
   public static getCoupons(): Coupon[] {

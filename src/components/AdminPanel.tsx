@@ -68,6 +68,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
 
   // Selected order for inspection or invoice
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
 
   // Product modal (Add / Edit)
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
@@ -302,6 +304,39 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         `Updated Order ${orderId}: Status=${updates.orderStatus || 'same'}, Payment=${updates.paymentStatus || 'same'}`
       );
     }
+  };
+
+  const handleRequestDeleteOrder = (order: Order, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setOrderToDelete(order);
+  };
+
+  const handleConfirmDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    const targetId = orderToDelete.id;
+    setIsDeletingOrder(true);
+
+    try {
+      await fetchWithAuth(`/api/admin/orders/${targetId}`, {
+        method: 'DELETE'
+      });
+    } catch {
+      // fallback
+    }
+
+    // Permanently remove from LocalStoreManager (localStorage)
+    LocalStoreManager.deleteOrder(targetId, adminUser?.email || 'admin@khshopzone.com');
+
+    // Update state immediately
+    setOrders(prev => prev.filter(o => o.id !== targetId));
+
+    // If currently inspecting this order, close the modal
+    if (selectedOrder?.id === targetId) {
+      setSelectedOrder(null);
+    }
+
+    setIsDeletingOrder(false);
+    setOrderToDelete(null);
   };
 
   // --- PRODUCT ACTIONS ---
@@ -1013,22 +1048,33 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                               <option value="cancelled">Cancelled</option>
                             </select>
                           </td>
-                          <td className="py-3 px-4 text-right space-x-1">
-                            {order.paymentDetails.status !== 'verified' && order.paymentMethod !== 'cod' && (
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {order.paymentDetails.status !== 'verified' && order.paymentMethod !== 'cod' && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, { paymentStatus: 'verified' })}
+                                  className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition-colors"
+                                  title="Verify Mobile Transaction ID"
+                                >
+                                  Verify Trx
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleUpdateOrderStatus(order.id, { paymentStatus: 'verified' })}
-                                className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-bold"
-                                title="Verify Mobile Transaction ID"
+                                onClick={() => setSelectedOrder(order)}
+                                className="px-2.5 py-1 bg-neutral-900 hover:bg-neutral-800 text-white rounded text-[10px] font-bold transition-colors"
                               >
-                                Verify Trx
+                                Inspect
                               </button>
-                            )}
-                            <button
-                              onClick={() => setSelectedOrder(order)}
-                              className="px-2 py-1 bg-neutral-900 text-white rounded text-[10px] font-bold"
-                            >
-                              Inspect
-                            </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handleRequestDeleteOrder(order, e)}
+                                className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title="Delete Order"
+                                aria-label={`Delete order ${order.id}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1167,20 +1213,31 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                       </div>
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-3 border-t border-neutral-200">
+                    <div className="flex items-center justify-between pt-3 border-t border-neutral-200">
                       <button
-                        onClick={() => window.print()}
-                        className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold rounded-lg text-xs flex items-center gap-1.5"
+                        type="button"
+                        onClick={() => handleRequestDeleteOrder(selectedOrder)}
+                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                        title="Permanently Delete This Order"
                       >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Print Invoice</span>
+                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                        <span>Delete Order</span>
                       </button>
-                      <button
-                        onClick={() => setSelectedOrder(null)}
-                        className="px-4 py-2 bg-neutral-900 text-white font-semibold rounded-lg text-xs"
-                      >
-                        Done
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => window.print()}
+                          className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold rounded-lg text-xs flex items-center gap-1.5"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Print Invoice</span>
+                        </button>
+                        <button
+                          onClick={() => setSelectedOrder(null)}
+                          className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold rounded-lg text-xs"
+                        >
+                          Done
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2457,6 +2514,72 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER DELETION CONFIRMATION MODAL */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-neutral-200 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-neutral-900 font-display">Delete Order {orderToDelete.id}?</h3>
+                <p className="text-xs text-neutral-500">This action is permanent and cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Customer:</span>
+                <span className="font-semibold text-neutral-900">{orderToDelete.customerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Phone:</span>
+                <span className="font-mono text-neutral-800">{orderToDelete.customerPhone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Total Amount:</span>
+                <span className="font-bold text-neutral-900">৳{orderToDelete.totalAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Current Status:</span>
+                <span className="capitalize font-semibold text-neutral-800">{orderToDelete.orderStatus}</span>
+              </div>
+              {orderToDelete.paymentDetails.trxId && (
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">TrxID:</span>
+                  <span className="font-mono font-bold text-neutral-900">{orderToDelete.paymentDetails.trxId}</span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-neutral-600 leading-relaxed">
+              Are you sure you want to delete this order? It will be permanently removed from storage so it does not reappear after page refresh or redeployment.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingOrder}
+                onClick={() => setOrderToDelete(null)}
+                className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold rounded-lg text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingOrder}
+                onClick={handleConfirmDeleteOrder}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingOrder ? 'Deleting...' : 'Yes, Delete Order'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

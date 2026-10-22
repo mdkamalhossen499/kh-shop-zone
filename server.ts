@@ -430,6 +430,17 @@ app.put('/api/admin/orders/:id', requireAdminAuth, (req: Request, res: Response)
   }
 });
 
+app.delete('/api/admin/orders/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const adminEmail = (req as any).adminEmail;
+    const success = db.deleteOrder(req.params.id, adminEmail);
+    if (!success) return res.status(404).json({ error: 'Order not found' });
+    res.json({ success: true, message: `Order #${req.params.id} permanently deleted.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin Settings
 app.put('/api/admin/settings', requireAdminAuth, (req: Request, res: Response) => {
   try {

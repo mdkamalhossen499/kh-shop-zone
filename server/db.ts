@@ -609,7 +609,7 @@ export class Database {
           admins: parsed.admins || initialDatabase.admins,
           categories: parsed.categories || initialDatabase.categories,
           products: parsed.products || initialDatabase.products,
-          orders: parsed.orders || initialDatabase.orders,
+          orders: Array.isArray(parsed.orders) ? parsed.orders : initialDatabase.orders,
           coupons: parsed.coupons || initialDatabase.coupons,
           reviews: parsed.reviews || initialDatabase.reviews,
           auditLogs: parsed.auditLogs || initialDatabase.auditLogs
@@ -917,6 +917,15 @@ export class Database {
 
     this.save();
     return { success: true, message: 'Order has been successfully cancelled.', order };
+  }
+
+  public deleteOrder(orderId: string, adminEmail: string): boolean {
+    const idx = this.db.orders.findIndex(o => o.id === orderId);
+    if (idx === -1) return false;
+    this.db.orders.splice(idx, 1);
+    this.logAudit(adminEmail, 'DELETE_ORDER', `Permanently deleted order #${orderId}`);
+    this.save();
+    return true;
   }
 
   // --- COUPONS ---

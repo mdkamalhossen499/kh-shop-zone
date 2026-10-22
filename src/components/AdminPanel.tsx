@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck, LayoutDashboard, Package, ShoppingCart, Tag, Settings,
   FileText, Database, LogOut, Key, Search, Plus, Trash2, Edit3, Check,
-  AlertTriangle, Eye, Printer, RefreshCw, X, ArrowUpRight, DollarSign,
-  TrendingUp, Users, Truck, Clock, Lock
+  AlertTriangle, Eye, EyeOff, Printer, RefreshCw, X, ArrowUpRight, DollarSign,
+  TrendingUp, Users, Truck, Clock, Lock, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { useStore } from '../context/StoreContext';
@@ -23,9 +23,10 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     'dashboard' | 'orders' | 'products' | 'categories' | 'coupons' | 'settings' | 'audit' | 'backup'
   >('dashboard');
 
-  // Login form state
-  const [loginEmail, setLoginEmail] = useState('admin@khshopzone.com');
-  const [loginPass, setLoginPass] = useState('khAdmin@2026!');
+  // Login form state (Blank by default for security, no public pre-fill)
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [showLoginPass, setShowLoginPass] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
@@ -33,6 +34,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showOldPass, setShowOldPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
@@ -57,10 +61,12 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   // Product modal (Add / Edit)
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [showProductUrlInput, setShowProductUrlInput] = useState(false);
 
-  // Category modal
+  // Category modal (Add / Edit)
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [showCategoryUrlInput, setShowCategoryUrlInput] = useState(false);
 
   // Coupon modal
   const [editingCoupon, setEditingCoupon] = useState<Partial<Coupon> | null>(null);
@@ -146,17 +152,34 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     e.preventDefault();
     setPasswordMsg('');
     setPasswordError('');
+
+    if (!oldPassword) {
+      setPasswordError('Please enter your current password.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
     const result = await changePassword(oldPassword, newPassword);
     if (result.success) {
-      setPasswordMsg('Password changed successfully.');
+      setPasswordMsg('Password changed successfully! Use this password for your next login.');
       setTimeout(() => {
         setShowPasswordModal(false);
         setOldPassword('');
         setNewPassword('');
+        setConfirmPassword('');
         setPasswordMsg('');
-      }, 1500);
+      }, 1800);
     } else {
-      setPasswordError(result.error || 'Failed to update password');
+      setPasswordError(result.error || 'Failed to update password. Please check your current password.');
     }
   };
 
@@ -296,6 +319,119 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     LocalStoreManager.logAudit(adminUser?.email || 'admin@khshopzone.com', 'DELETE_PRODUCT', `Deleted product ID: ${id}`);
   };
 
+  // Keep local categories in sync with global context
+  useEffect(() => {
+    setCategories(globalCategories);
+  }, [globalCategories]);
+
+  // --- CATEGORY ACTIONS ---
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory?.name) return;
+
+    const payload: Category = {
+      id: editingCategory.id || `cat_${Date.now()}`,
+      name: editingCategory.name.trim(),
+      nameBn: editingCategory.nameBn?.trim() || '',
+      slug: editingCategory.slug?.trim() || editingCategory.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      description: editingCategory.description || '',
+      icon: editingCategory.icon || 'Tag',
+      image: editingCategory.image || '',
+      sortOrder: Number(editingCategory.sortOrder) || (categories.length + 1)
+    };
+
+    try {
+      const isEdit = !!editingCategory.id;
+      const url = isEdit ? `/api/admin/categories/${editingCategory.id}` : '/api/admin/categories';
+      await fetchWithAuth(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      // fallback to local storage
+    }
+
+    const updated = LocalStoreManager.saveCategory(payload);
+    setCategories(updated);
+    refreshCategories();
+    LocalStoreManager.logAudit(
+      adminUser?.email || 'admin@khshopzone.com',
+      editingCategory.id ? 'UPDATE_CATEGORY' : 'CREATE_CATEGORY',
+      `Saved category: ${payload.name} (${payload.id})`
+    );
+    setIsCategoryModalOpen(false);
+    setEditingCategory(null);
+  };
+
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    if (!confirm(`Are you sure you want to delete category "${catName}"? This will remove it from the store.`)) return;
+
+    try {
+      await fetchWithAuth(`/api/admin/categories/${catId}`, { method: 'DELETE' });
+    } catch {
+      // fallback
+    }
+
+    const updated = LocalStoreManager.deleteCategory(catId);
+    setCategories(updated);
+    refreshCategories();
+    LocalStoreManager.logAudit(
+      adminUser?.email || 'admin@khshopzone.com',
+      'DELETE_CATEGORY',
+      `Deleted category: ${catName} (${catId})`
+    );
+  };
+
+  // --- IMAGE UPLOAD HANDLERS ---
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !settingsForm) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setSettingsForm({ ...settingsForm, logoUrl: base64 });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingProduct) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setEditingProduct({
+          ...editingProduct,
+          images: [base64, ...(editingProduct.images?.slice(1) || [])]
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCategoryImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingCategory) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setEditingCategory({
+          ...editingCategory,
+          image: base64
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // --- SETTINGS ACTIONS ---
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -383,13 +519,24 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
 
             <div>
               <label className="block text-neutral-700 font-medium mb-1">Password</label>
-              <input
-                type="password"
-                value={loginPass}
-                onChange={e => setLoginPass(e.target.value)}
-                required
-                className="w-full px-3 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white text-xs"
-              />
+              <div className="relative">
+                <input
+                  type={showLoginPass ? 'text' : 'password'}
+                  value={loginPass}
+                  onChange={e => setLoginPass(e.target.value)}
+                  required
+                  placeholder="Enter admin password"
+                  className="w-full px-3 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:border-neutral-900 focus:bg-white text-xs pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPass(!showLoginPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                  tabIndex={-1}
+                >
+                  {showLoginPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -401,11 +548,11 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
             </button>
           </form>
 
-          {/* Quick Demo Helper */}
-          <div className="mt-5 p-3 bg-neutral-100 rounded-xl border border-neutral-200 text-[11px] text-neutral-600">
-            <span className="font-bold text-neutral-800 block mb-1">🔑 Demo Admin Credentials:</span>
-            <div className="font-mono text-neutral-700">Email: admin@khshopzone.com</div>
-            <div className="font-mono text-neutral-700">Password: khAdmin@2026!</div>
+          <div className="mt-5 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-center">
+            <div className="flex items-center justify-center gap-1.5 text-neutral-500 text-[11px]">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Encrypted Store Administration Session</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1154,14 +1301,99 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                         </div>
                       </div>
 
+                      {/* Product Image Management (1:1 Ratio) */}
                       <div>
-                        <label className="block text-neutral-700 font-medium mb-1">Image Asset Path / URL</label>
-                        <input
-                          type="text"
-                          value={editingProduct.images?.[0] || ''}
-                          onChange={e => setEditingProduct({ ...editingProduct, images: [e.target.value] })}
-                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono"
-                        />
+                        <label className="block text-neutral-700 font-semibold mb-1.5 flex items-center justify-between">
+                          <span>Product Image (1:1 Aspect Ratio)</span>
+                          <span className="text-[11px] text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            Square 1:1 Recommended
+                          </span>
+                        </label>
+
+                        <div className="p-3.5 bg-neutral-50 rounded-xl border border-neutral-200 flex flex-col sm:flex-row items-center gap-4">
+                          {/* 1:1 Aspect Ratio Container */}
+                          <div className="relative aspect-square w-28 h-28 rounded-xl overflow-hidden border-2 border-neutral-200 bg-white shadow-xs shrink-0 flex items-center justify-center group">
+                            {editingProduct.images?.[0] ? (
+                              <>
+                                <img
+                                  src={editingProduct.images[0]}
+                                  alt="Product Preview"
+                                  className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <label
+                                    htmlFor="admin-product-file-input"
+                                    className="cursor-pointer px-2 py-1 bg-white/90 text-neutral-900 text-[10px] font-bold rounded shadow-sm hover:bg-white"
+                                  >
+                                    Change Image
+                                  </label>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center text-neutral-400 p-2 text-center">
+                                <ImageIcon className="w-8 h-8 mb-1 text-neutral-300" />
+                                <span className="text-[10px] font-medium">No Image</span>
+                              </div>
+                            )}
+                            <span className="absolute bottom-1 right-1 bg-neutral-900/80 backdrop-blur-xs text-white text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded">
+                              1:1
+                            </span>
+                          </div>
+
+                          {/* Upload Controls & Actions */}
+                          <div className="flex-1 w-full space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label
+                                htmlFor="admin-product-file-input"
+                                className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-semibold text-xs transition-colors shadow-xs"
+                              >
+                                <Upload className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Direct Image Upload</span>
+                              </label>
+                              <input
+                                id="admin-product-file-input"
+                                type="file"
+                                accept="image/*"
+                                onChange={handleProductImageUpload}
+                                className="hidden"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => setShowProductUrlInput(!showProductUrlInput)}
+                                className="px-3 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-700 rounded-lg font-medium text-xs transition-colors"
+                              >
+                                {showProductUrlInput ? 'Hide URL Input' : 'Or Paste Image URL'}
+                              </button>
+
+                              {editingProduct.images?.[0] && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingProduct({ ...editingProduct, images: [] })}
+                                  className="px-2.5 py-2 text-red-600 hover:bg-red-50 rounded-lg text-xs font-medium"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+
+                            {showProductUrlInput && (
+                              <div className="pt-1">
+                                <input
+                                  type="text"
+                                  placeholder="Enter image URL: https://... or /src/assets/..."
+                                  value={editingProduct.images?.[0] || ''}
+                                  onChange={e => setEditingProduct({ ...editingProduct, images: [e.target.value] })}
+                                  className="w-full px-3 py-1.5 bg-white border border-neutral-300 rounded-lg text-xs font-mono"
+                                />
+                              </div>
+                            )}
+
+                            <p className="text-[11px] text-neutral-500 leading-tight">
+                              Upload any JPEG, PNG, or WebP photo directly from your device. The image will be displayed in an authentic 1:1 square ratio across product cards, carousels, and checkout.
+                            </p>
+                          </div>
+                        </div>
                       </div>
 
                       <div>
@@ -1226,27 +1458,261 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
           {/* TAB 4: CATEGORIES MANAGEMENT */}
           {activeTab === 'categories' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-neutral-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-neutral-200 shadow-xs">
                 <div>
                   <h3 className="text-sm font-bold text-neutral-900">Product Categories ({categories.length})</h3>
-                  <p className="text-xs text-neutral-500">Manage all store categories, icons, and display sorting.</p>
+                  <p className="text-xs text-neutral-500">Manage all store categories. Add, edit, reorder or remove any category.</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCategory({
+                      name: '',
+                      nameBn: '',
+                      slug: '',
+                      description: '',
+                      icon: 'Tag',
+                      image: '',
+                      sortOrder: categories.length + 1
+                    });
+                    setIsCategoryModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Add New Category</span>
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {globalCategories.map(cat => (
-                  <div key={cat.id} className="p-4 bg-white rounded-xl border border-neutral-200 flex justify-between items-start">
+              {/* Category Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {categories.map(cat => (
+                  <div key={cat.id} className="p-4 bg-white rounded-xl border border-neutral-200 shadow-xs flex flex-col justify-between hover:border-neutral-300 transition-all">
                     <div>
-                      <h4 className="text-xs font-bold text-neutral-900">{cat.name}</h4>
-                      {cat.nameBn && <span className="text-[11px] text-neutral-500 font-medium">{cat.nameBn}</span>}
-                      <p className="text-[11px] text-neutral-400 mt-1 line-clamp-2">{cat.description}</p>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2.5">
+                          {cat.image ? (
+                            <img
+                              src={cat.image}
+                              alt={cat.name}
+                              className="w-10 h-10 rounded-lg object-cover bg-neutral-100 border border-neutral-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-900 border border-amber-200/60 flex items-center justify-center font-bold text-xs shrink-0">
+                              <Tag className="w-4 h-4 text-amber-700" />
+                            </div>
+                          )}
+                          <div>
+                            <h4 className="text-xs font-bold text-neutral-900 line-clamp-1">{cat.name}</h4>
+                            {cat.nameBn && <span className="text-[11px] text-neutral-500 font-medium block">{cat.nameBn}</span>}
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] font-mono font-bold bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded shrink-0">
+                          #{cat.sortOrder}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-neutral-500 line-clamp-2 mb-3">
+                        {cat.description || 'No description provided.'}
+                      </p>
+
+                      <div className="text-[10px] text-neutral-400 font-mono truncate mb-3">
+                        Slug: /{cat.slug}
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono font-bold bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded">
-                      Order: {cat.sortOrder}
-                    </span>
+
+                    <div className="flex items-center justify-end gap-1.5 pt-2.5 border-t border-neutral-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategory(cat);
+                          setIsCategoryModalOpen(true);
+                        }}
+                        className="px-2.5 py-1.5 text-neutral-700 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                        className="px-2.5 py-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
+
+              {/* Add / Edit Category Modal */}
+              {isCategoryModalOpen && editingCategory && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                  <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-neutral-200 shadow-2xl my-8">
+                    <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
+                      <h3 className="text-base font-bold text-neutral-900">
+                        {editingCategory.id ? 'Edit Category' : 'Add New Category'}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCategoryModalOpen(false);
+                          setEditingCategory(null);
+                        }}
+                        className="text-neutral-400 hover:text-neutral-800"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveCategory} className="my-4 space-y-3.5 text-xs">
+                      <div>
+                        <label className="block text-neutral-700 font-semibold mb-1">Category Name (English) *</label>
+                        <input
+                          type="text"
+                          value={editingCategory.name || ''}
+                          onChange={e => {
+                            const name = e.target.value;
+                            setEditingCategory({
+                              ...editingCategory,
+                              name,
+                              slug: editingCategory.id ? (editingCategory.slug || '') : name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                            });
+                          }}
+                          required
+                          placeholder="e.g. Luxury Watches"
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-neutral-700 font-semibold mb-1">Bengali Name (বাংলা নাম)</label>
+                          <input
+                            type="text"
+                            value={editingCategory.nameBn || ''}
+                            onChange={e => setEditingCategory({ ...editingCategory, nameBn: e.target.value })}
+                            placeholder="যেমন: লাক্সারি ঘড়ি"
+                            className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-neutral-700 font-semibold mb-1">URL Slug</label>
+                          <input
+                            type="text"
+                            value={editingCategory.slug || ''}
+                            onChange={e => setEditingCategory({ ...editingCategory, slug: e.target.value })}
+                            placeholder="e.g. luxury-watches"
+                            className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-neutral-700 font-semibold mb-1">Sort Order / Priority</label>
+                        <input
+                          type="number"
+                          value={editingCategory.sortOrder || 1}
+                          onChange={e => setEditingCategory({ ...editingCategory, sortOrder: Number(e.target.value) })}
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-neutral-700 font-semibold mb-1">Description</label>
+                        <textarea
+                          rows={2}
+                          value={editingCategory.description || ''}
+                          onChange={e => setEditingCategory({ ...editingCategory, description: e.target.value })}
+                          placeholder="Brief description for category banner and SEO..."
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
+                        />
+                      </div>
+
+                      {/* Category Thumbnail / 1:1 Image */}
+                      <div>
+                        <label className="block text-neutral-700 font-semibold mb-1 flex items-center justify-between">
+                          <span>Category Thumbnail / Icon (1:1 Ratio)</span>
+                          <span className="text-[10px] text-neutral-500">Optional</span>
+                        </label>
+                        <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
+                          <div className="relative aspect-square w-14 h-14 rounded-lg overflow-hidden border border-neutral-300 bg-white shrink-0 flex items-center justify-center">
+                            {editingCategory.image ? (
+                              <img src={editingCategory.image} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Tag className="w-5 h-5 text-neutral-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <label
+                                htmlFor="cat-img-upload"
+                                className="cursor-pointer px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-medium text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                              >
+                                <Upload className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Upload Image</span>
+                              </label>
+                              <input
+                                id="cat-img-upload"
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleCategoryImageUpload}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowCategoryUrlInput(!showCategoryUrlInput)}
+                                className="px-2.5 py-1.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-700 rounded-lg text-xs font-medium"
+                              >
+                                {showCategoryUrlInput ? 'Hide URL' : 'Or Paste URL'}
+                              </button>
+                              {editingCategory.image && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingCategory({ ...editingCategory, image: '' })}
+                                  className="text-red-600 hover:underline text-xs"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                            {showCategoryUrlInput && (
+                              <input
+                                type="text"
+                                placeholder="Paste image URL here..."
+                                value={editingCategory.image || ''}
+                                onChange={e => setEditingCategory({ ...editingCategory, image: e.target.value })}
+                                className="w-full px-2.5 py-1 bg-white border border-neutral-300 rounded text-xs font-mono"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-3 border-t border-neutral-200">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCategoryModalOpen(false);
+                            setEditingCategory(null);
+                          }}
+                          className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-lg font-medium text-xs transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors"
+                        >
+                          {editingCategory.id ? 'Save Changes' : 'Create Category'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1256,9 +1722,87 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               {/* Branding Section */}
               <div className="bg-white p-6 rounded-xl border border-neutral-200 space-y-4">
                 <h3 className="text-sm font-bold text-neutral-900 border-b border-neutral-200 pb-2">
-                  1. Brand Identity & Header Notice
+                  1. Brand Identity & Header Logo
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+
+                {/* Header Logo Customization */}
+                <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-neutral-800 block">Header Logo (Navbar)</span>
+                      <p className="text-[11px] text-neutral-500">
+                        Upload or specify a custom brand logo image to display across the website header and navigation bar.
+                      </p>
+                    </div>
+                    {settingsForm.logoUrl && (
+                      <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                        Active Custom Logo
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                    {/* Logo Preview Container */}
+                    <div className="h-16 w-36 px-2 bg-white rounded-lg border border-neutral-300 shadow-xs flex items-center justify-center overflow-hidden shrink-0">
+                      {settingsForm.logoUrl ? (
+                        <img
+                          src={settingsForm.logoUrl}
+                          alt="Custom Logo Preview"
+                          className="max-h-12 max-w-full object-contain"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-neutral-400 text-xs font-medium">
+                          <div className="w-7 h-7 rounded bg-amber-400 text-neutral-950 font-black text-xs flex items-center justify-center">
+                            KH
+                          </div>
+                          <span className="font-bold text-[11px] text-neutral-600">Default Logo</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Logo Upload & Input Controls */}
+                    <div className="flex-1 w-full space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label
+                          htmlFor="header-logo-upload"
+                          className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-semibold text-xs transition-colors shadow-xs"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Upload Header Logo</span>
+                        </label>
+                        <input
+                          id="header-logo-upload"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
+
+                        {settingsForm.logoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSettingsForm({ ...settingsForm, logoUrl: '' })}
+                            className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            Reset to Default Monogram
+                          </button>
+                        )}
+                      </div>
+
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Or paste direct image URL (https://... or data:image/...)"
+                          value={settingsForm.logoUrl || ''}
+                          onChange={e => setSettingsForm({ ...settingsForm, logoUrl: e.target.value })}
+                          className="w-full px-3 py-1.5 bg-white border border-neutral-300 rounded-lg text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-1">
                   <div>
                     <label className="block text-neutral-700 font-medium mb-1">Store Name</label>
                     <input
@@ -1534,43 +2078,113 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 border border-neutral-200 shadow-xl">
-            <h3 className="text-base font-bold text-neutral-900 mb-2">Change Admin Password</h3>
-            {passwordMsg && <p className="text-xs text-emerald-600 mb-2">{passwordMsg}</p>}
-            {passwordError && <p className="text-xs text-red-600 mb-2">{passwordError}</p>}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-900 flex items-center justify-center">
+                  <Lock className="w-4 h-4 text-amber-700" />
+                </div>
+                <h3 className="text-sm font-bold text-neutral-900">Change Admin Password</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordError('');
+                  setPasswordMsg('');
+                }}
+                className="text-neutral-400 hover:text-neutral-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-neutral-500 mb-3">
+              To update your security credentials, you must verify your current active password.
+            </p>
+
+            {passwordMsg && (
+              <div className="p-2.5 mb-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{passwordMsg}</span>
+              </div>
+            )}
+            {passwordError && (
+              <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{passwordError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleChangePassword} className="space-y-3 text-xs">
               <div>
-                <label className="block text-neutral-700 font-medium mb-1">Current Password</label>
-                <input
-                  type="password"
-                  value={oldPassword}
-                  onChange={e => setOldPassword(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg"
-                />
+                <label className="block text-neutral-700 font-medium mb-1">Current Password *</label>
+                <div className="relative">
+                  <input
+                    type={showOldPass ? 'text' : 'password'}
+                    value={oldPassword}
+                    onChange={e => setOldPassword(e.target.value)}
+                    required
+                    placeholder="Enter current password"
+                    className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOldPass(!showOldPass)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                    tabIndex={-1}
+                  >
+                    {showOldPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
+
               <div>
-                <label className="block text-neutral-700 font-medium mb-1">New Password (min 6 chars)</label>
+                <label className="block text-neutral-700 font-medium mb-1">New Password (min 6 chars) *</label>
+                <div className="relative">
+                  <input
+                    type={showNewPass ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    required
+                    placeholder="Enter new password"
+                    className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                    tabIndex={-1}
+                  >
+                    {showNewPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-neutral-700 font-medium mb-1">Confirm New Password *</label>
                 <input
-                  type="password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
+                  type={showNewPass ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg"
+                  placeholder="Re-enter new password"
+                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
                 <button
                   type="button"
                   onClick={() => setShowPasswordModal(false)}
-                  className="px-3 py-1.5 bg-neutral-100 text-neutral-700 rounded-lg font-medium"
+                  className="px-3.5 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg font-medium text-xs transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1.5 bg-neutral-900 text-white rounded-lg font-semibold"
+                  className="px-4 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg font-semibold text-xs transition-colors"
                 >
-                  Update Password
+                  Verify & Update
                 </button>
               </div>
             </form>

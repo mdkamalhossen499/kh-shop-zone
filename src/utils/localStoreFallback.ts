@@ -523,10 +523,12 @@ export class LocalStoreManager {
     const cleanPass = pass.trim();
     const storedPass = this.getAdminPassword();
 
-    return (
-      (cleanEmail === 'admin@khshopzone.com' || cleanEmail === 'kamal@khshopzone.com' || cleanEmail === 'admin') &&
-      (cleanPass === storedPass || cleanPass === 'khAdmin@2026!')
-    );
+    const isAuthorizedEmail =
+      cleanEmail === 'admin@khshopzone.com' ||
+      cleanEmail === 'kamal@khshopzone.com' ||
+      cleanEmail === 'admin';
+
+    return isAuthorizedEmail && cleanPass === storedPass;
   }
 
   public static getSettings(): SiteSettings {
@@ -578,6 +580,25 @@ export class LocalStoreManager {
     } catch (e) {
       console.error(e);
     }
+  }
+
+  public static saveCategory(cat: Category): Category[] {
+    const categories = this.getCategories();
+    const idx = categories.findIndex(c => c.id === cat.id);
+    if (idx !== -1) {
+      categories[idx] = cat;
+    } else {
+      categories.push(cat);
+    }
+    categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    this.saveCategories(categories);
+    return categories;
+  }
+
+  public static deleteCategory(id: string): Category[] {
+    const categories = this.getCategories().filter(c => c.id !== id);
+    this.saveCategories(categories);
+    return categories;
   }
 
   public static getOrders(): Order[] {

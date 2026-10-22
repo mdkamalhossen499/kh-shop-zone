@@ -53,9 +53,17 @@ export function Header({ currentView, setCurrentView, searchQuery, setSearchQuer
             }}
             className="flex items-center gap-2.5 text-left group"
           >
-            <div className="w-9 h-9 rounded-lg bg-neutral-900 text-white flex items-center justify-center font-bold text-base tracking-wider group-hover:bg-neutral-800 transition-colors shadow-sm">
-              KH
-            </div>
+            {settings?.logoUrl ? (
+              <img
+                src={settings.logoUrl}
+                alt={siteName}
+                className="h-10 w-auto max-w-[140px] sm:max-w-[180px] object-contain rounded"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-lg bg-neutral-900 text-white flex items-center justify-center font-bold text-base tracking-wider group-hover:bg-neutral-800 transition-colors shadow-sm">
+                KH
+              </div>
+            )}
             <div className="flex flex-col">
               <span className="text-lg font-bold tracking-tight text-neutral-900 font-display whitespace-nowrap">
                 {siteName}

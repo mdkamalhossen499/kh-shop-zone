@@ -106,7 +106,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
     return {
       success: false,
-      error: 'Invalid admin credentials. Please use admin@khshopzone.com / khAdmin@2026!'
+      error: 'Invalid admin email or password. Please try again.'
     };
   };
 
